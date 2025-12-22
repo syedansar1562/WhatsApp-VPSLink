@@ -1,0 +1,24 @@
+# Auth session files (contains private keys)
+auth_info/
+
+# Downloaded media
+downloads/
+
+# Backups
+backups/
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# QR codes
+qr.png
+*.png
+
+# Environment variables (contains secrets)
+.env
