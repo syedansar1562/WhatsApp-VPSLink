@@ -168,6 +168,7 @@ WhatsApp-VPSLink/
 │   └── upload-to-s3.js      # Migrate local data to S3
 ├── docs/
 │   ├── DEPLOYMENT.md        # VPS deployment guide
+│   ├── VPS-DETAILS.md       # VPS configuration details
 │   ├── CONTACTS.md          # Contact management guide
 │   └── S3-SETUP.md          # S3 configuration guide
 ├── auth_info/               # WhatsApp session (gitignored)
