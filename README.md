@@ -1,584 +1,319 @@
-# WhatsApp VPSLink - Complete Message Scheduling System
+# WhatsApp VPSLink - Scheduled Message System
 
-A production-ready WhatsApp message scheduling system with 24/7 VPS worker, web UI, and cloud storage.
-
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
-![Status](https://img.shields.io/badge/status-production-green)
-![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)
+**Version:** 2.0  
+**Last Updated:** December 23, 2025  
+**Status:** ✅ Production Ready
 
 ---
 
-## 🚀 Overview
+## Overview
 
-WhatsApp VPSLink is a complete WhatsApp automation system that allows you to:
-
-- **📅 Schedule Messages** - Schedule WhatsApp messages days/weeks in advance
-- **🌐 Web Interface** - Beautiful web UI to manage contacts and schedules
-- **☁️ Cloud Storage** - All data stored in S3 (Backblaze B2)
-- **⏰ 24/7 Automation** - VPS worker sends messages at exact scheduled times
-- **👥 Contact Management** - 272 contacts with search, favorites, and aliases
-- **📊 Message Tracking** - Track pending, sent, and failed messages
-- **🔐 Secure** - Password-protected web interface
+A complete WhatsApp message scheduling system with:
+- **Web UI** for scheduling messages and managing contacts
+- **Automated scheduler** that sends messages at specified times
+- **272 contacts** stored in S3
+- **Professional dark theme** UI
+- **Searchable contact picker** with favorites
+- **Full contact management** (edit, add aliases/tags, toggle favorites)
 
 ---
 
-## 📐 Architecture
+## Quick Start
+
+### Access the System
+
+**Web UI:**  
+🌐 http://192.209.62.48:3000  
+🔑 Password: `admin123`
+
+**Features:**
+- Schedule messages to any contact
+- Manage 272 contacts
+- View scheduled/sent/failed messages
+- Edit contacts (names, phones, aliases, tags)
+- Search and filter contacts
+
+### Schedule a Message
+
+1. Go to http://192.209.62.48:3000
+2. Click the blue **+** button (top-right)
+3. Search for a contact by typing name/phone/alias
+4. Toggle **"Favs"** to filter favorites
+5. Select contact, enter message, date, and time
+6. Click **"Schedule Message"**
+7. Message will send automatically at scheduled time
+
+---
+
+## Documentation Index
+
+### 🚀 Getting Started
+- **[README.md](README.md)** - This file (start here)
+- **[docs/guides/QUICKSTART.md](docs/guides/QUICKSTART.md)** - Quick start guide
+- **[docs/guides/TODAYS_CHANGES_SUMMARY.md](docs/guides/TODAYS_CHANGES_SUMMARY.md)** - Latest updates (Dec 23, 2025)
+
+### 🏗️ Architecture
+- **[docs/architecture/SCHEDULER.md](docs/architecture/SCHEDULER.md)** - How the scheduler works
+- **[docs/architecture/DATA-STRUCTURES.md](docs/architecture/DATA-STRUCTURES.md)** - JSON data formats
+
+### 🚢 Deployment
+- **[docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md)** - Full deployment guide
+- **[docs/deployment/VPS-DETAILS.md](docs/deployment/VPS-DETAILS.md)** - Server credentials & setup
+- **[docs/deployment/S3-SETUP.md](docs/deployment/S3-SETUP.md)** - Backblaze B2 configuration
+
+### ✨ Features
+- **[docs/features/UI-DESIGN.md](docs/features/UI-DESIGN.md)** - Complete UI/UX specification
+- **[docs/features/SCHEDULE_MODAL_IMPROVEMENTS.md](docs/features/SCHEDULE_MODAL_IMPROVEMENTS.md)** - Enhanced contact picker
+- **[docs/features/MISSING_FEATURES_SUMMARY.md](docs/features/MISSING_FEATURES_SUMMARY.md)** - Future enhancements (150+ features)
+
+### 📚 Guides
+- **[docs/guides/CONTACTS.md](docs/guides/CONTACTS.md)** - Contact management guide
+- **[docs/guides/UI-IMPROVEMENTS.md](docs/guides/UI-IMPROVEMENTS.md)** - UI improvement guide
+
+### 🔧 Troubleshooting
+- **[docs/troubleshooting/WHY_CHRIS_MESSAGE_DIDNT_SEND.md](docs/troubleshooting/WHY_CHRIS_MESSAGE_DIDNT_SEND.md)** - Scheduler issue explanation & fix
+
+### 🎨 UI Components
+- **[docs/ui-components/README.md](docs/ui-components/README.md)** - Component documentation
+
+---
+
+## System Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                    YOU (Web Browser)                          │
-│              http://192.209.62.48:3000                        │
-│     • Schedule messages                                       │
-│     • Manage contacts                                         │
-│     • View scheduled/sent messages                            │
-└─────────────────────┬────────────────────────────────────────┘
-                      │
-                      │ Saves to S3
-                      ▼
-┌──────────────────────────────────────────────────────────────┐
-│                 BACKBLAZE B2 S3 BUCKET                        │
-│                   (WhatsAppVPS)                               │
-│                                                               │
-│  📁 whatsapp/contacts.json    (272 contacts)                 │
-│  📁 whatsapp/scheduled.json   (scheduled messages)           │
-│  📁 whatsapp/chats.json       (message history)              │
-└─────────────────────┬────────────────────────────────────────┘
-                      │
-                      │ Polled every 60 seconds
-                      ▼
-┌──────────────────────────────────────────────────────────────┐
-│              DOODAH VPS - Scheduler Worker                    │
-│                  (5.231.56.146)                               │
-│                                                               │
-│  PM2 Process: whatsapp-scheduler                             │
-│  • Connects to WhatsApp                                      │
-│  • Checks S3 every 60 seconds                                │
-│  • Sends messages at scheduled time                          │
-│  • Updates status in S3                                      │
-└─────────────────────┬────────────────────────────────────────┘
-                      │
-                      │ Sends WhatsApp message
-                      ▼
-┌──────────────────────────────────────────────────────────────┐
-│                      WHATSAPP                                 │
-│              Message Delivered to Contact                     │
-└──────────────────────────────────────────────────────────────┘
-```
-
----
-
-## ✨ Features
-
-### 🎯 Core Functionality
-
-- ✅ **Message Scheduling** - Schedule messages for any future date/time
-- ✅ **Automatic Sending** - VPS worker sends messages 24/7
-- ✅ **Contact Management** - Full CRUD operations on contacts
-- ✅ **Search & Filter** - Find contacts by name, alias, or phone
-- ✅ **Favorites** - Mark frequently contacted people
-- ✅ **Status Tracking** - Monitor pending/sent/failed messages
-
-### 🌐 Web Interface
-
-- ✅ **Beautiful Dashboard** - Overview of all scheduled messages
-- ✅ **Searchable Dropdowns** - Type-to-search contact selection
-- ✅ **Edit Contacts** - Add aliases, alternative numbers, favorites
-- ✅ **Mobile Responsive** - Works on desktop, tablet, mobile
-- ✅ **Password Protected** - Secure access
-
-### ⚙️ Technical
-
-- ✅ **Cloud Storage** - S3-based, no local storage required
-- ✅ **PM2 Process Manager** - Auto-restart, logging, monitoring
-- ✅ **Next.js 16** - Modern React framework
-- ✅ **TypeScript** - Type-safe codebase
-- ✅ **Tailwind CSS** - Beautiful styling
-- ✅ **shadcn/ui** - Premium UI components
-
----
-
-## 📋 System Components
-
-### 1. **Scheduler Worker** (Doodah VPS)
-- **Location:** `/root/whatsapp-vpslink/`
-- **Process:** `whatsapp-scheduler` (PM2)
-- **Files:**
-  - `scheduler.js` - Main worker loop
-  - `src/scheduledStore.js` - S3 interface
-- **Function:** Polls S3 every 60s, sends pending messages
-
-### 2. **Web UI** (Saadi VPS)
-- **Location:** `/var/www/whatsapp-vpslink/`
-- **Process:** `whatsapp-web` (PM2)
-- **URL:** http://192.209.62.48:3000
-- **Tech Stack:** Next.js 16 + Tailwind + shadcn/ui
-- **Pages:**
-  - `/login` - Password authentication
-  - `/dashboard` - Overview & stats
-  - `/contacts` - Contact management
-  - `/schedule` - Schedule new message
-  - `/scheduled` - View all scheduled messages
-
-### 3. **S3 Storage** (Backblaze B2)
-- **Bucket:** `WhatsAppVPS`
-- **Region:** `eu-central-003`
-- **Files:**
-  - `whatsapp/contacts.json` - 272 contacts with aliases
-  - `whatsapp/scheduled.json` - Message queue
-  - `whatsapp/chats.json` - Message history (5.5MB)
-
----
-
-## 🚀 Quick Start
-
-### Access Web UI
-
-1. **Open:** http://192.209.62.48:3000
-2. **Login:** Password: `changeme123`
-3. **Start Scheduling!**
-
-### Schedule Your First Message
-
-1. Click **"Schedule New Message"**
-2. **Search for contact** - Type name, alias, or phone
-3. **Select from dropdown**
-4. **Enter message**
-5. **Pick date & time** (UK timezone)
-6. **Click "Schedule Message"**
-7. **Done!** - Message will send automatically
-
----
-
-## 📚 Documentation
-
-### Quick Links
-
-- **[Deployment Guide](docs/deployment/DEPLOYMENT.md)** - How to deploy from scratch
-- **[Scheduler Documentation](docs/architecture/SCHEDULER.md)** - How the scheduler works
-- **[Web UI Guide](docs/guides/WEB-UI.md)** - Web interface features
-- **[API Documentation](docs/architecture/API.md)** - API routes reference
-- **[Testing Guide](docs/guides/TESTING.md)** - How to test the system
-- **[Troubleshooting](docs/guides/TROUBLESHOOTING.md)** - Common issues & solutions
-
-### Documentation Structure
-
-```
-docs/
-├── architecture/          # System architecture docs
-│   ├── SCHEDULER.md      # Scheduler worker details
-│   ├── API.md            # API routes documentation
-│   └── DATA-STRUCTURES.md # S3 data formats
-├── deployment/           # Deployment guides
-│   ├── DEPLOYMENT.md     # Full deployment guide
-│   ├── VPS-SETUP.md      # VPS configuration
-│   └── SSL-SETUP.md      # SSL certificate setup
-├── guides/               # User guides
-│   ├── WEB-UI.md         # Web interface guide
-│   ├── CONTACTS.md       # Contact management
-│   ├── TESTING.md        # Testing procedures
-│   ├── TROUBLESHOOTING.md # Problem solving
-│   └── UI-IMPROVEMENTS.md # UI enhancement history
-└── archive/              # Historical docs
-    └── HANDOVER.md       # Original handover doc
+┌─────────────────────────────────────────────────────────┐
+│           WEB UI (Saadi VPS - 192.209.62.48)            │
+│                                                          │
+│  Next.js 15 + React 18 + TypeScript                     │
+│  Port: 3000                                              │
+│  PM2: whatsapp-web                                       │
+│                                                          │
+│  Pages: /dashboard, /contacts, /scheduled, /login       │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       │ HTTP API
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│         S3 STORAGE (Backblaze B2 - WhatsAppVPS)         │
+│                                                          │
+│  whatsapp/contacts.json     ← 272 contacts              │
+│  whatsapp/scheduled.json    ← Scheduled messages        │
+│  whatsapp/chats.json        ← Message history           │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       │ Check every 60s
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│         SCHEDULER (Doodah VPS - 5.231.56.146)           │
+│                                                          │
+│  Node.js + Baileys (WhatsApp Web)                       │
+│  PM2: whatsapp-scheduler                                 │
+│                                                          │
+│  • Checks S3 every 60 seconds                           │
+│  • Sends messages at scheduled time                     │
+│  • Updates status to sent/failed                        │
+│  • Auto-reconnects to WhatsApp                          │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🔧 Installation & Setup
-
-### Prerequisites
-
-- **2 VPS Servers:**
-  - Doodah VPS (5.231.56.146) - Scheduler worker
-  - Saadi VPS (192.209.62.48) - Web UI
-- **Backblaze B2 Account** - S3-compatible storage
-- **Node.js 20+** - On both VPS servers
-- **PM2** - Process manager
-
-### Full Setup
-
-See **[docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md)** for complete step-by-step instructions.
-
----
-
-## 🎨 Web UI Features
-
-### Dashboard
-- **Quick Stats:** Pending, sent, failed message counts
-- **Upcoming Messages:** Next 5 scheduled messages
-- **Quick Actions:** Schedule new, view all, manage contacts
-
-### Schedule Message
-- **Smart Search:** Type to find contacts instantly
-- **Filter Options:** Favorites / All contacts
-- **Auto-complete:** Shows name, phone, aliases
-- **Visual Selection:** See full contact details
-- **Date/Time Picker:** UK timezone aware
-
-### Contacts Management
-- **Full Editing:** Name, phone, aliases
-- **Favorites Toggle:** One-click marking
-- **Alternative Numbers:** Add secondary phones
-- **Search:** By name, alias, or phone number
-- **Sorted Display:** Favorites first, then A-Z
-
-### Scheduled Messages
-- **View All:** Complete list of scheduled messages
-- **Status Filters:** Pending / Sent / Failed
-- **Delete Pending:** Cancel messages not yet sent
-- **Status Badges:** Color-coded status indicators
-
----
-
-## 📊 Data Structures
-
-### contacts.json
-
-```json
-{
-  "447957189696": {
-    "name": "Reem",
-    "aliases": ["Reemy", "R", "Sister"],
-    "phones": {
-      "primary": "447957189696",
-      "secondary": null
-    },
-    "favorite": true,
-    "tags": ["family"]
-  }
-}
-```
-
-### scheduled.json
-
-```json
-{
-  "messages": [
-    {
-      "id": "1735168500123_a1b2c3",
-      "to": "447957189696",
-      "contactName": "Reem",
-      "message": "Happy Birthday!",
-      "scheduledTime": "2025-12-24T10:00:00.000Z",
-      "status": "pending",
-      "createdAt": "2025-12-22T22:15:00.000Z",
-      "createdFrom": "web",
-      "sentAt": null
-    }
-  ]
-}
-```
-
-See **[docs/architecture/DATA-STRUCTURES.md](docs/architecture/DATA-STRUCTURES.md)** for complete schema documentation.
-
----
-
-## 🔐 Security
-
-### Current Setup
-- ✅ Password-protected web UI
-- ✅ HTTP-only authentication cookies
-- ✅ Firewall configured (UFW)
-- ✅ S3 credentials in `.env` files (not committed)
-- ✅ WhatsApp session keys not committed
-
-### Recommendations
-- 🔒 Add SSL certificate (requires domain)
-- 🔒 Use strong password (change default)
-- 🔒 Enable 2FA on S3 account
-- 🔒 Regular S3 backups
-- 🔒 SSH key-only authentication on VPS
-
----
-
-## 📈 Performance
-
-### Metrics
-- **Scheduler Check Interval:** 60 seconds
-- **Message Send Accuracy:** ±3 seconds of scheduled time
-- **S3 Read Latency:** ~200-500ms
-- **S3 Write Latency:** ~300-600ms
-- **Web UI Load Time:** <2 seconds
-- **Search Response Time:** <10ms (client-side)
-
-### Resource Usage
-
-**Doodah VPS (Scheduler):**
-- CPU: <5%
-- RAM: ~100MB
-- Disk: ~150MB (auth_info + code)
-
-**Saadi VPS (Web UI):**
-- CPU: <10%
-- RAM: ~60MB
-- Disk: ~200MB (Next.js build)
-
-**S3 Storage:**
-- contacts.json: ~57KB
-- scheduled.json: ~1-5KB
-- chats.json: ~5.5MB
-
----
-
-## 🧪 Testing
-
-### End-to-End Test
-
-```bash
-# 1. Schedule a message
-Open: http://192.209.62.48:3000
-Login: changeme123
-Schedule message for 2 minutes from now
-
-# 2. Check S3
-node -e "
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
-// ... (see TESTING.md for full script)
-"
-
-# 3. Wait for send time
-
-# 4. Verify on WhatsApp
-Check phone for message
-
-# 5. Verify status update
-Refresh web UI - should show "sent"
-```
-
-See **[docs/guides/TESTING.md](docs/guides/TESTING.md)** for complete test scenarios.
-
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Web UI not accessible**
-```bash
-# Check PM2 status
-ssh root@192.209.62.48 'pm2 status'
-
-# Check logs
-ssh root@192.209.62.48 'pm2 logs whatsapp-web'
-
-# Restart
-ssh root@192.209.62.48 'pm2 restart whatsapp-web'
-```
-
-**Scheduler not sending messages**
-```bash
-# Check PM2 status
-ssh root@5.231.56.146 'pm2 status'
-
-# Check logs
-ssh root@5.231.56.146 'pm2 logs whatsapp-scheduler --lines 50'
-
-# Verify S3 connection
-# Check scheduled.json has messages with status "pending"
-```
-
-**WhatsApp connection conflict**
-```
-Error: Stream Errored (conflict)
-```
-This happens when multiple connections exist. Only run ONE scheduler process.
-
-See **[docs/guides/TROUBLESHOOTING.md](docs/guides/TROUBLESHOOTING.md)** for complete troubleshooting guide.
-
----
-
-## 🛠️ Development
-
-### Local Development
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/WhatsApp-VPSLink.git
-cd WhatsApp-VPSLink
-
-# Install dependencies
-npm install
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your S3 credentials
-
-# Test locally
-node wa.js listen
-```
-
-### Project Structure
+## Project Structure
 
 ```
 WhatsApp-VPSLink/
-├── wa.js                    # Main CLI tool
-├── scheduler.js             # Scheduler worker (VPS)
-├── src/
-│   ├── chatStore.js         # S3 storage handler
-│   └── scheduledStore.js    # Scheduled messages handler
-├── scripts/
-│   ├── upload-contacts-to-s3.js
-│   └── migrate-contacts.js
-├── tools/
-│   ├── contacts-manager.js
-│   └── import-contacts.js
-├── docs/                    # Documentation
-├── auth_info/               # WhatsApp session (gitignored)
-└── .env                     # Environment config (gitignored)
+├── README.md                    # Main entry point (this file)
+├── docs/                        # All documentation
+│   ├── architecture/            # System architecture
+│   ├── deployment/              # Deployment & infrastructure
+│   ├── features/                # Feature documentation
+│   ├── guides/                  # User guides
+│   ├── troubleshooting/         # Troubleshooting docs
+│   ├── ui-components/           # React component examples
+│   └── archive/                 # Old documentation
+├── src/                         # Source code
+├── scripts/                     # Utility scripts
+├── tools/                       # CLI tools
+├── wa.js                        # WhatsApp CLI
+└── package.json                 # Dependencies
 ```
-
-### Contributing
-
-1. Fork the repository
-2. Create feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open Pull Request
 
 ---
 
-## 📝 Changelog
+## Key Features
 
-### Version 2.0.0 (2025-12-22)
+### ✅ Message Scheduling
+- Schedule messages to any contact
+- Set date and time (Europe/London timezone)
+- Automatic sending via scheduler (checks every 60 seconds)
+- Status tracking (pending/sent/failed)
+- Delete scheduled messages
+- Filter by status
 
-**Added:**
-- ✅ Complete message scheduling system
-- ✅ Web UI with Next.js 16
-- ✅ Scheduler worker with PM2
-- ✅ Contact management with favorites
-- ✅ Searchable contact dropdown
-- ✅ Edit contacts (name, phones, aliases)
-- ✅ Status tracking (pending/sent/failed)
-- ✅ Dashboard with statistics
-- ✅ Comprehensive documentation
+### ✅ Contact Management
+- 272 contacts stored in S3
+- **Search** by name, phone, or alias
+- **Filter** by favorites
+- **Edit contacts** with modal
+- **Toggle favorite** with star icon
+- View all contact details
 
-**Technical:**
-- Next.js 16.1.1 (Turbopack)
-- TypeScript for type safety
-- Tailwind CSS + shadcn/ui
-- S3 storage with Backblaze B2
-- PM2 process management
-- 60-second polling interval
+### ✅ Enhanced Contact Picker
+- **Type to search** by name/phone/alias
+- **Favorites toggle** to show only starred contacts
+- **Live dropdown** with results filtering
+- **Visual confirmation** of selected contact
 
-### Version 1.0.0 (2024)
-
-**Original Features:**
-- WhatsApp message capture
-- S3 storage
-- Contact management
-- Media downloads
-
----
-
-## 🌟 Features in Detail
-
-### Contact Search Algorithm
-
-The search is smart and fast:
-- Searches across: name, aliases, phone numbers
-- Case-insensitive matching
-- Real-time filtering (no lag)
-- Results sorted: Favorites first, then alphabetical
-
-### Scheduler Logic
-
-```javascript
-// Every 60 seconds:
-1. Download scheduled.json from S3
-2. Filter messages where:
-   - status === "pending"
-   - scheduledTime <= now (UK timezone)
-3. For each message:
-   - Send via WhatsApp
-   - Update status to "sent"
-   - Record sentAt timestamp
-4. Upload updated scheduled.json to S3
-```
-
-### Time Zone Handling
-
-All times stored in **ISO 8601 UTC** format:
-```
-User schedules: Dec 24, 2025 10:00 AM UK time
-Stored in S3: "2025-12-24T10:00:00.000Z"
-Scheduler compares: new Date().toISOString() <= scheduledTime
-```
-
-UK timezone (Europe/London) handles GMT/BST automatically.
+### ✅ Professional Dark Theme
+- Clean, modern dark UI
+- Apple-style aesthetic
+- Responsive layout
+- Smooth animations
 
 ---
 
-## 📞 Support & Contact
+## Tech Stack
 
-### Need Help?
+### Web UI (Saadi VPS)
+- Next.js 15.5.9
+- TypeScript + React 18
+- Tailwind CSS (dark theme)
+- lucide-react icons
+- AWS SDK for S3
+- PM2
 
-1. Check **[docs/guides/TROUBLESHOOTING.md](docs/guides/TROUBLESHOOTING.md)**
-2. Review **[docs/guides/TESTING.md](docs/guides/TESTING.md)**
-3. Check PM2 logs on VPS
-4. Verify S3 bucket contents
+### Scheduler (Doodah VPS)
+- Node.js 20.x
+- @whiskeysockets/baileys
+- AWS SDK for S3
+- PM2
 
-### System Information
-
-**Doodah VPS (Scheduler):**
-- IP: 5.231.56.146
-- PM2 Process: `whatsapp-scheduler`
-- Check status: `ssh root@5.231.56.146 'pm2 status'`
-
-**Saadi VPS (Web UI):**
-- IP: 192.209.62.48
-- URL: http://192.209.62.48:3000
-- PM2 Process: `whatsapp-web`
-- Check status: `ssh root@192.209.62.48 'pm2 status'`
-
-**S3 Bucket:**
-- Provider: Backblaze B2
+### Storage
+- Backblaze B2 (S3-compatible)
 - Bucket: WhatsAppVPS
 - Region: eu-central-003
-- Endpoint: https://s3.eu-central-003.backblazeb2.com
 
 ---
 
-## 📜 License
+## Server Details
 
-MIT License - See LICENSE file for details
+### Saadi VPS (192.209.62.48)
+- **Purpose:** Web UI hosting
+- **PM2 Process:** whatsapp-web
+- **Location:** `/var/www/whatsapp-scheduler`
 
----
-
-## 🙏 Acknowledgments
-
-- **[@whiskeysockets/baileys](https://github.com/WhiskeySockets/Baileys)** - WhatsApp Web API
-- **[Next.js](https://nextjs.org/)** - React framework
-- **[shadcn/ui](https://ui.shadcn.com/)** - UI components
-- **[Backblaze B2](https://www.backblaze.com/b2/cloud-storage.html)** - S3-compatible storage
-- **[PM2](https://pm2.keymetrics.io/)** - Process manager
+### Doodah VPS (5.231.56.146)
+- **Purpose:** WhatsApp scheduler
+- **PM2 Process:** whatsapp-scheduler
+- **Location:** `/root/whatsapp-vpslink`
 
 ---
 
-## 🎯 Roadmap
+## Common Tasks
 
-### Planned Features
+### Check System Status
 
-- [ ] SSL/HTTPS support (requires domain)
-- [ ] Recurring messages (daily/weekly schedules)
-- [ ] Message templates
-- [ ] Bulk message scheduling
-- [ ] Export scheduled messages to CSV
-- [ ] Contact groups/tags
-- [ ] Multi-user support
-- [ ] Message history view
-- [ ] Analytics dashboard
-- [ ] Mobile app (React Native)
+```bash
+# Web UI status
+ssh root@192.209.62.48
+pm2 status
 
-### Known Limitations
+# Scheduler status
+ssh root@5.231.56.146
+pm2 status
+```
 
-- HTTP only (no SSL without domain)
-- Single user (password-based auth)
-- UK timezone only (hardcoded)
-- No recurring messages
-- No message templates
+### Restart Services
+
+```bash
+# Restart web UI
+ssh root@192.209.62.48
+pm2 restart whatsapp-web
+
+# Restart scheduler
+ssh root@5.231.56.146
+pm2 restart whatsapp-scheduler
+```
+
+### Rebuild Web UI
+
+```bash
+ssh root@192.209.62.48
+cd /var/www/whatsapp-scheduler
+npm run build
+pm2 restart whatsapp-web
+```
 
 ---
 
-**Built with ❤️ for efficient WhatsApp automation**
+## Recent Changes (December 23, 2025)
 
-Last Updated: December 22, 2025
+### 🐛 Fixed: Scheduler Not Running
+- **Issue:** Messages stuck as "pending", never sent
+- **Fix:** Created scheduler service on Doodah VPS
+- **Result:** Scheduler now runs 24/7
+- **Details:** [WHY_CHRIS_MESSAGE_DIDNT_SEND.md](docs/troubleshooting/WHY_CHRIS_MESSAGE_DIDNT_SEND.md)
+
+### ✨ Enhanced: Schedule Modal Contact Picker
+- Type to search (name/phone/alias)
+- Favorites toggle button
+- Live filtering dropdown
+- Visual selection confirmation
+- **Details:** [SCHEDULE_MODAL_IMPROVEMENTS.md](docs/features/SCHEDULE_MODAL_IMPROVEMENTS.md)
+
+### ✨ Added: Contact Editing
+- Edit contact modal
+- Edit name, phones, aliases, tags
+- Toggle favorites
+- All changes persist to S3
+
+### 📚 Documentation Organized
+- Proper directory structure
+- Comprehensive guides
+- Architecture docs
+- Troubleshooting guides
+
+---
+
+## Future Enhancements
+
+See [docs/features/MISSING_FEATURES_SUMMARY.md](docs/features/MISSING_FEATURES_SUMMARY.md) for complete list.
+
+**Top Priority:**
+- Recurring message scheduler
+- Message templates
+- Bulk operations
+- VCF file import UI
+- Analytics dashboard
+
+---
+
+## Support
+
+**Access:**
+- Web UI: http://192.209.62.48:3000
+- Saadi VPS: `root@192.209.62.48`
+- Doodah VPS: `root@5.231.56.146`
+
+**Documentation:**
+- Start with [QUICKSTART.md](docs/guides/QUICKSTART.md)
+- For issues, see [troubleshooting/](docs/troubleshooting/)
+
+---
+
+## Version History
+
+**v2.0** (December 23, 2025)
+- Fixed scheduler service
+- Enhanced contact picker
+- Added contact editing
+- Organized documentation
+- Professional dark theme
+
+**v1.0** (December 22, 2025)
+- Initial implementation
+
+---
+
+**Last Updated:** December 23, 2025  
+**Status:** ✅ Production - Fully Operational
