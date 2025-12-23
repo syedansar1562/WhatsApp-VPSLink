@@ -22,6 +22,8 @@ docs/
 ├── features/                    # Feature documentation
 │   ├── UI-DESIGN.md             # Complete UI/UX spec (534 lines)
 │   ├── SCHEDULE_MODAL_IMPROVEMENTS.md  # Contact picker (380 lines)
+│   ├── FAILED_MESSAGES_AND_RESCHEDULE.md   # Failed msg handling (Dec 23)
+
 │   ├── MISSING_FEATURES_SUMMARY.md     # Future features (150+)
 │   ├── COMPREHENSIVE_MISSING_FEATURES.txt  # Detailed analysis (707 lines)
 │   ├── FEATURE_RESTORATION_CHECKLIST.md    # Implementation tasks
@@ -126,6 +128,8 @@ docs/
 ### Features & Functionality
 
 **[features/SCHEDULE_MODAL_IMPROVEMENTS.md](features/SCHEDULE_MODAL_IMPROVEMENTS.md)** (380 lines)
+│   ├── FAILED_MESSAGES_AND_RESCHEDULE.md   # Failed msg handling (Dec 23)
+
 - Enhanced contact picker documentation
 - Before/after comparison
 - Search functionality (name/phone/alias)
@@ -229,6 +233,8 @@ docs/
 ### "I need to schedule a message"
 1. [guides/QUICKSTART.md](guides/QUICKSTART.md)
 2. [features/SCHEDULE_MODAL_IMPROVEMENTS.md](features/SCHEDULE_MODAL_IMPROVEMENTS.md)
+│   ├── FAILED_MESSAGES_AND_RESCHEDULE.md   # Failed msg handling (Dec 23)
+
 
 ### "I need to manage contacts"
 1. [guides/CONTACTS.md](guides/CONTACTS.md)
