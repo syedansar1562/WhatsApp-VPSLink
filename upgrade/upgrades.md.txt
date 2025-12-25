@@ -1,0 +1,297 @@
+Web UI + Sending Engine Upgrades (Baileys / WhatsApp) — Detailed Design Spec for Implementation
+
+0) Goals
+
+Primary goals
+	•	Let a single scheduled “send” contain multiple message parts (like a real chat), not one big essay.
+	•	Add multiple recipients so the same message sequence can be sent to a list (e.g., Christmas message).
+	•	Make delivery feel human and non-bot-like:
+	•	Natural spacing between message parts.
+	•	Natural spacing between recipients.
+	•	Optional “typing…” presence before messages.
+	•	Strictly sequential sending (no parallel bursts).
+
+Non-goals (for this phase)
+	•	No AI rewriting of message content.
+	•	No complex behavioural ML. Just deterministic, tuneable heuristics.
+	•	No “broadcast at once” mechanics.
+
+⸻
+
+1) UI: Multi-Message Composer (Chat-Stack Layout)
+
+Scheduler screen changes
+
+Replace the single message textbox with a Message Sequence editor that looks like a vertical chat stack.
+
+Each scheduled item contains:
+	•	Recipients
+	•	Multi-select from contacts and/or paste numbers
+	•	Clear display of how many recipients will be messaged
+	•	Message Sequence (ordered rows)
+	•	Row fields:
+	•	Message text (multi-line)
+	•	Optional “manual interval after this message” (seconds)
+	•	Add row (below)
+	•	Remove row
+	•	Drag handle to reorder rows
+	•	Timing
+	•	Scheduled start date/time (existing)
+	•	Optional “do not send outside local hours” (quiet hours)
+	•	Human-like sending profile
+	•	Dropdown: “Humanisation Profile” (see section 4)
+	•	Toggle switches (can be part of profile, but surfaced here for clarity):
+	•	Enable natural spacing
+	•	Enable typing indicator simulation
+	•	Enable recipient pacing (gap between recipients)
+	•	Preview panel
+	•	Show a simulated timeline:
+	•	“Recipient 1 → message 1 at T+…, message 2 at T+…”
+	•	“Recipient 2 starts at T+…”
+	•	This is important so it’s obvious it won’t “bosh bosh bosh” instantly.
+
+⸻
+
+2) Scheduling Model: One Job → Many Parts → Many Recipients
+
+Core behaviour rule
+
+A single scheduled job is:
+	•	1 start time
+	•	N recipients
+	•	M message parts
+	•	One sending plan that is executed sequentially:
+	•	Recipient A: part 1 → delay → part 2 → delay … → part M
+	•	Gap
+	•	Recipient B: part 1 → delay → … → part M
+	•	Gap
+	•	Recipient C… etc
+
+Absolutely no parallel sends
+	•	Do not send to multiple recipients at the same time.
+	•	Do not send multiple message parts at the same time.
+	•	Everything is queued and processed in order.
+
+⸻
+
+3) Interval Modes (Per Job)
+
+The job supports interval calculation in two ways:
+
+A) Manual Interval Mode
+	•	Each message row has an “interval after this message (seconds)” field.
+	•	Interval applies from message N to message N+1.
+	•	If a row interval is blank, fall back to profile defaults.
+
+B) Automatic Interval Mode (Deterministic Heuristic)
+	•	System computes delay based on message length (characters and/or words).
+	•	Add small randomness (“jitter”) so two similar messages don’t always wait exactly the same time.
+
+Minimum requirements:
+	•	Short messages send quickly (but not instant)
+	•	Longer messages wait longer
+	•	Cap the maximum wait to avoid absurd delays
+	•	Add jitter to avoid looking robotic
+
+⸻
+
+4) “Humanisation Profile” (Separate, Central, Reusable Object)
+
+Why this exists
+
+Human-like behaviour must be implemented as a separate configuration object (not scattered logic), so we can tweak it once and it applies everywhere.
+
+Storage
+	•	Store profiles in DB (or config file first, DB later).
+	•	Each scheduled job references a profile ID (or copies snapshot values at schedule time to ensure reproducibility).
+
+Example profile fields (suggested)
+
+Message pacing
+	•	minDelayPerMessageSeconds
+	•	maxDelayPerMessageSeconds
+	•	perWordDelaySeconds (or perCharDelayMs)
+	•	punctuationPauseBonus (extra delay if message ends with “…” / long punctuation)
+	•	jitterSecondsMin / jitterSecondsMax
+	•	“thinking delay” before the first part (optional)
+
+Typing simulation
+	•	enableTypingPresence (true/false)
+	•	typingMode:
+	•	“before each message”
+	•	“only before long messages”
+	•	“only before first message part per recipient”
+	•	typingRefreshSeconds (presence expires quickly, so refresh if delay is long)
+	•	pausePresenceAfterSend (set paused/available/unavailable)
+
+Recipient pacing
+	•	gapBetweenRecipientsSecondsMin
+	•	gapBetweenRecipientsSecondsMax
+	•	extraGapEveryNRecipients (optional “cooldown”)
+	•	maxRecipientsPerHour (soft throttle)
+	•	maxRecipientsPerDay (soft throttle)
+
+Safety / anti-bot throttles
+	•	maxMessagesPerMinute (hard limit)
+	•	backoffOnError (retry strategy)
+	•	“stop job if risk threshold exceeded” (optional)
+
+⸻
+
+5) Baileys Presence (“typing…”) Simulation
+
+What we want
+
+Before sending a message (especially longer ones), show WhatsApp-style presence so it looks like a human is composing.
+
+Capability confirmation (Baileys)
+
+Baileys supports sending presence updates, including “composing” (typing), “paused”, “available”, and “unavailable”.  ￼
+
+Presence behaviour rules
+	•	When about to send a message part:
+	•	Set presence to “composing” for that chat
+	•	Wait the computed typing delay
+	•	Send the message
+	•	Optionally set “paused” after sending (so it doesn’t look like you’re typing forever)
+	•	Presence expiry:
+	•	Presence does not last indefinitely; if the computed delay is longer than the presence window, refresh presence during the wait.  ￼
+
+Practical notes / edge cases
+	•	Some Baileys versions have had user-reported issues with typing indicators not appearing consistently; treat it as “best effort” and make the feature optional/toggleable.  ￼
+	•	If presence fails, the message sending must still proceed normally.
+
+⸻
+
+6) Multi-Recipient Sending Logic (Human + Safe)
+
+Sequential pipeline (required)
+
+For each recipient in the recipients list:
+	1.	Optional recipient-level “start gap” (small human pause before engaging a new person)
+	2.	For each message part in the sequence:
+	•	Optional typing indicator (based on profile rules)
+	•	Send message part
+	•	Wait delay (manual or automatic) before next part
+	3.	After final part:
+	•	Wait recipient gap before starting next recipient
+
+No duplication of schedules
+	•	One schedule object can target many recipients.
+	•	The system expands to a queue internally; it does not create N copies of the schedule in the UI.
+
+Chronological integrity
+	•	If the job starts at 13:00, and there are many recipients, delivery time will naturally drift later as the queue processes. That is acceptable and expected.
+	•	UI preview should show “estimated completion time”.
+
+⸻
+
+7) Risk Management: Don’t Look Like a Spammer / Bot
+
+Behaviour choices that reduce risk
+	•	Avoid bursts (parallel sends)
+	•	Add randomness (jitter) to delays
+	•	Respect quiet hours (optional)
+	•	Slow down after X recipients (“cooldown”)
+	•	Cap throughput with hard limits (messages/minute; recipients/hour)
+
+Operational safeguards
+	•	Implement a queue worker with:
+	•	Global concurrency = 1 (for WhatsApp sending)
+	•	Optional per-chat lock (so two jobs never interleave messages into one chat)
+	•	Backoff on transient errors (network / reconnect / WhatsApp-web quirks) using retry + increasing delay with jitter (standard rate-limit handling best practice).  ￼
+	•	If repeated failures occur:
+	•	Pause job and flag in UI
+	•	Do not keep hammering WhatsApp
+
+⸻
+
+8) Data Model (Suggested)
+
+Entities
+
+Contact
+	•	id
+	•	displayName
+	•	waJid / phone
+	•	timezone (already discussed in project direction)
+	•	optOut / doNotMessage flag (optional)
+
+HumanisationProfile
+	•	id
+	•	name
+	•	all pacing + typing + throttling fields
+
+ScheduledJob
+	•	id
+	•	createdBy
+	•	scheduledStartAt (UTC)
+	•	recipients[] (contact IDs and/or raw numbers normalised to JIDs)
+	•	intervalMode: manual|auto
+	•	profileId (or profileSnapshot JSON)
+	•	status: pending|running|paused|completed|failed|cancelled
+	•	metadata: tags (e.g., “Christmas”), campaign name, etc.
+
+ScheduledJobMessagePart
+	•	id
+	•	jobId
+	•	orderIndex
+	•	text
+	•	manualDelaySecondsAfter (nullable)
+
+Queue / ExecutionLog
+	•	jobId
+	•	recipientJid
+	•	partIndex
+	•	plannedSendAt
+	•	actualSendAt
+	•	deliveryResult (success/fail + error details)
+
+⸻
+
+9) Execution Engine (Worker) Requirements
+
+Worker guarantees
+	•	Exactly-once semantics per (jobId, recipient, partIndex) as much as practical:
+	•	If a crash happens mid-job, resume safely without duplicating parts.
+	•	Persistent state:
+	•	Store “current recipient index” and “current part index” so it can resume.
+	•	Observability:
+	•	Log send attempts, delays applied, presence toggles used, errors, retries.
+
+Timezone + scheduling note
+	•	Keep scheduling times in UTC internally.
+	•	Recipient timezone is useful for quiet hours (don’t message someone at 03:00 local time), but this can be a later enhancement.
+
+⸻
+
+10) Testing Checklist
+
+Functional tests
+	•	Single recipient, 5 message parts, manual delay: correct order, correct pauses
+	•	Single recipient, auto delay: delays scale with length, jitter applied
+	•	Multiple recipients: strictly sequential recipients, recipient gap applied
+	•	Typing enabled: composing shown before send (where supported), refresh logic works for long delays
+
+Safety tests
+	•	Throughput caps enforced
+	•	Retry/backoff behaves correctly
+	•	Worker restart resumes without duplicating already-sent parts
+
+UX tests
+	•	Adding/removing/reordering rows is smooth
+	•	Preview timeline matches what the worker will do
+	•	Clear status updates: running, next recipient, ETA, completed
+
+⸻
+
+11) Documentation Notes for the Dev (Baileys)
+	•	Presence states available include: unavailable, available, composing, recording, paused.  ￼
+	•	Baileys package docs reference presence updates as part of its normal socket usage.  ￼
+
+⸻
+
+If you want, I can also produce:
+	•	A JSON schema for the job payload (UI → API)
+	•	A concrete auto-delay formula with sensible defaults (UK-centric, “human texting” style)
+	•	A queue design proposal (BullMQ vs simple DB polling) tailored to your VPS setup

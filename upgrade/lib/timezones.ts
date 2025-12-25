@@ -1,0 +1,355 @@
+// Timezone utilities for WhatsApp Scheduler
+// Uses IANA timezone identifiers with explicit UTC offset display
+
+export interface TimezoneInfo {
+  iana: string;
+  label: string;
+  utcOffset: string; // e.g., "+00", "-05", "+04"
+}
+
+// Common timezones with their labels
+export const COMMON_TIMEZONES: TimezoneInfo[] = [
+  { iana: 'Europe/London', label: 'London, UK', utcOffset: '+00' },
+  { iana: 'Europe/Paris', label: 'Paris, France', utcOffset: '+01' },
+  { iana: 'Europe/Berlin', label: 'Berlin, Germany', utcOffset: '+01' },
+  { iana: 'Europe/Istanbul', label: 'Istanbul, Turkey', utcOffset: '+03' },
+  { iana: 'Asia/Dubai', label: 'Dubai, UAE', utcOffset: '+04' },
+  { iana: 'Asia/Karachi', label: 'Karachi, Pakistan', utcOffset: '+05' },
+  { iana: 'Asia/Kolkata', label: 'Mumbai, India', utcOffset: '+05:30' },
+  { iana: 'Asia/Dhaka', label: 'Dhaka, Bangladesh', utcOffset: '+06' },
+  { iana: 'Asia/Bangkok', label: 'Bangkok, Thailand', utcOffset: '+07' },
+  { iana: 'Asia/Singapore', label: 'Singapore', utcOffset: '+08' },
+  { iana: 'Asia/Hong_Kong', label: 'Hong Kong', utcOffset: '+08' },
+  { iana: 'Asia/Tokyo', label: 'Tokyo, Japan', utcOffset: '+09' },
+  { iana: 'Australia/Sydney', label: 'Sydney, Australia', utcOffset: '+10' },
+  { iana: 'Pacific/Auckland', label: 'Auckland, New Zealand', utcOffset: '+12' },
+  { iana: 'America/New_York', label: 'New York, USA Eastern', utcOffset: '-05' },
+  { iana: 'America/Chicago', label: 'Chicago, USA Central', utcOffset: '-06' },
+  { iana: 'America/Denver', label: 'Denver, USA Mountain', utcOffset: '-07' },
+  { iana: 'America/Los_Angeles', label: 'Los Angeles, USA Pacific', utcOffset: '-08' },
+  { iana: 'America/Toronto', label: 'Toronto, Canada', utcOffset: '-05' },
+  { iana: 'America/Mexico_City', label: 'Mexico City', utcOffset: '-06' },
+  { iana: 'America/Sao_Paulo', label: 'São Paulo, Brazil', utcOffset: '-03' },
+  { iana: 'Africa/Cairo', label: 'Cairo, Egypt', utcOffset: '+02' },
+  { iana: 'Africa/Johannesburg', label: 'Johannesburg, South Africa', utcOffset: '+02' },
+  { iana: 'Africa/Lagos', label: 'Lagos, Nigeria', utcOffset: '+01' },
+];
+
+// Phone country code to timezone mapping
+export const PHONE_TO_TIMEZONE: Record<string, string> = {
+  '1': 'America/New_York',        // USA/Canada (default Eastern)
+  '7': 'Europe/Moscow',            // Russia
+  '20': 'Africa/Cairo',            // Egypt
+  '27': 'Africa/Johannesburg',    // South Africa
+  '30': 'Europe/Athens',           // Greece
+  '31': 'Europe/Amsterdam',        // Netherlands
+  '32': 'Europe/Brussels',         // Belgium
+  '33': 'Europe/Paris',            // France
+  '34': 'Europe/Madrid',           // Spain
+  '36': 'Europe/Budapest',         // Hungary
+  '39': 'Europe/Rome',             // Italy
+  '40': 'Europe/Bucharest',        // Romania
+  '41': 'Europe/Zurich',           // Switzerland
+  '43': 'Europe/Vienna',           // Austria
+  '44': 'Europe/London',           // UK
+  '45': 'Europe/Copenhagen',       // Denmark
+  '46': 'Europe/Stockholm',        // Sweden
+  '47': 'Europe/Oslo',             // Norway
+  '48': 'Europe/Warsaw',           // Poland
+  '49': 'Europe/Berlin',           // Germany
+  '51': 'America/Lima',            // Peru
+  '52': 'America/Mexico_City',     // Mexico
+  '53': 'America/Havana',          // Cuba
+  '54': 'America/Argentina/Buenos_Aires', // Argentina
+  '55': 'America/Sao_Paulo',       // Brazil
+  '56': 'America/Santiago',        // Chile
+  '57': 'America/Bogota',          // Colombia
+  '58': 'America/Caracas',         // Venezuela
+  '60': 'Asia/Kuala_Lumpur',       // Malaysia
+  '61': 'Australia/Sydney',        // Australia
+  '62': 'Asia/Jakarta',            // Indonesia
+  '63': 'Asia/Manila',             // Philippines
+  '64': 'Pacific/Auckland',        // New Zealand
+  '65': 'Asia/Singapore',          // Singapore
+  '66': 'Asia/Bangkok',            // Thailand
+  '81': 'Asia/Tokyo',              // Japan
+  '82': 'Asia/Seoul',              // South Korea
+  '84': 'Asia/Ho_Chi_Minh',        // Vietnam
+  '86': 'Asia/Shanghai',           // China
+  '90': 'Europe/Istanbul',         // Turkey
+  '91': 'Asia/Kolkata',            // India
+  '92': 'Asia/Karachi',            // Pakistan
+  '93': 'Asia/Kabul',              // Afghanistan
+  '94': 'Asia/Colombo',            // Sri Lanka
+  '95': 'Asia/Yangon',             // Myanmar
+  '98': 'Asia/Tehran',             // Iran
+  '212': 'Africa/Casablanca',      // Morocco
+  '213': 'Africa/Algiers',         // Algeria
+  '216': 'Africa/Tunis',           // Tunisia
+  '218': 'Africa/Tripoli',         // Libya
+  '220': 'Africa/Banjul',          // Gambia
+  '221': 'Africa/Dakar',           // Senegal
+  '222': 'Africa/Nouakchott',      // Mauritania
+  '223': 'Africa/Bamako',          // Mali
+  '224': 'Africa/Conakry',         // Guinea
+  '225': 'Africa/Abidjan',         // Ivory Coast
+  '226': 'Africa/Ouagadougou',     // Burkina Faso
+  '227': 'Africa/Niamey',          // Niger
+  '228': 'Africa/Lome',            // Togo
+  '229': 'Africa/Porto-Novo',      // Benin
+  '230': 'Indian/Mauritius',       // Mauritius
+  '231': 'Africa/Monrovia',        // Liberia
+  '232': 'Africa/Freetown',        // Sierra Leone
+  '233': 'Africa/Accra',           // Ghana
+  '234': 'Africa/Lagos',           // Nigeria
+  '235': 'Africa/Ndjamena',        // Chad
+  '236': 'Africa/Bangui',          // Central African Republic
+  '237': 'Africa/Douala',          // Cameroon
+  '238': 'Atlantic/Cape_Verde',    // Cape Verde
+  '239': 'Africa/Sao_Tome',        // São Tomé and Príncipe
+  '240': 'Africa/Malabo',          // Equatorial Guinea
+  '241': 'Africa/Libreville',      // Gabon
+  '242': 'Africa/Brazzaville',     // Republic of the Congo
+  '243': 'Africa/Kinshasa',        // Democratic Republic of the Congo
+  '244': 'Africa/Luanda',          // Angola
+  '245': 'Africa/Bissau',          // Guinea-Bissau
+  '246': 'Indian/Chagos',          // British Indian Ocean Territory
+  '248': 'Indian/Mahe',            // Seychelles
+  '249': 'Africa/Khartoum',        // Sudan
+  '250': 'Africa/Kigali',          // Rwanda
+  '251': 'Africa/Addis_Ababa',     // Ethiopia
+  '252': 'Africa/Mogadishu',       // Somalia
+  '253': 'Africa/Djibouti',        // Djibouti
+  '254': 'Africa/Nairobi',         // Kenya
+  '255': 'Africa/Dar_es_Salaam',   // Tanzania
+  '256': 'Africa/Kampala',         // Uganda
+  '257': 'Africa/Bujumbura',       // Burundi
+  '258': 'Africa/Maputo',          // Mozambique
+  '260': 'Africa/Lusaka',          // Zambia
+  '261': 'Indian/Antananarivo',    // Madagascar
+  '262': 'Indian/Reunion',         // Réunion
+  '263': 'Africa/Harare',          // Zimbabwe
+  '264': 'Africa/Windhoek',        // Namibia
+  '265': 'Africa/Blantyre',        // Malawi
+  '266': 'Africa/Maseru',          // Lesotho
+  '267': 'Africa/Gaborone',        // Botswana
+  '268': 'Africa/Mbabane',         // Eswatini
+  '269': 'Indian/Comoro',          // Comoros
+  '290': 'Atlantic/St_Helena',     // Saint Helena
+  '291': 'Africa/Asmara',          // Eritrea
+  '297': 'America/Aruba',          // Aruba
+  '298': 'Atlantic/Faroe',         // Faroe Islands
+  '299': 'America/Godthab',        // Greenland
+  '350': 'Europe/Gibraltar',       // Gibraltar
+  '351': 'Europe/Lisbon',          // Portugal
+  '352': 'Europe/Luxembourg',      // Luxembourg
+  '353': 'Europe/Dublin',          // Ireland
+  '354': 'Atlantic/Reykjavik',     // Iceland
+  '355': 'Europe/Tirane',          // Albania
+  '356': 'Europe/Malta',           // Malta
+  '357': 'Asia/Nicosia',           // Cyprus
+  '358': 'Europe/Helsinki',        // Finland
+  '359': 'Europe/Sofia',           // Bulgaria
+  '370': 'Europe/Vilnius',         // Lithuania
+  '371': 'Europe/Riga',            // Latvia
+  '372': 'Europe/Tallinn',         // Estonia
+  '373': 'Europe/Chisinau',        // Moldova
+  '374': 'Asia/Yerevan',           // Armenia
+  '375': 'Europe/Minsk',           // Belarus
+  '376': 'Europe/Andorra',         // Andorra
+  '377': 'Europe/Monaco',          // Monaco
+  '378': 'Europe/San_Marino',      // San Marino
+  '380': 'Europe/Kiev',            // Ukraine
+  '381': 'Europe/Belgrade',        // Serbia
+  '382': 'Europe/Podgorica',       // Montenegro
+  '383': 'Europe/Pristina',        // Kosovo
+  '385': 'Europe/Zagreb',          // Croatia
+  '386': 'Europe/Ljubljana',       // Slovenia
+  '387': 'Europe/Sarajevo',        // Bosnia and Herzegovina
+  '389': 'Europe/Skopje',          // North Macedonia
+  '420': 'Europe/Prague',          // Czech Republic
+  '421': 'Europe/Bratislava',      // Slovakia
+  '423': 'Europe/Vaduz',           // Liechtenstein
+  '500': 'Atlantic/Stanley',       // Falkland Islands
+  '501': 'America/Belize',         // Belize
+  '502': 'America/Guatemala',      // Guatemala
+  '503': 'America/El_Salvador',    // El Salvador
+  '504': 'America/Tegucigalpa',    // Honduras
+  '505': 'America/Managua',        // Nicaragua
+  '506': 'America/Costa_Rica',     // Costa Rica
+  '507': 'America/Panama',         // Panama
+  '508': 'America/Miquelon',       // Saint Pierre and Miquelon
+  '509': 'America/Port-au-Prince', // Haiti
+  '590': 'America/Guadeloupe',     // Guadeloupe
+  '591': 'America/La_Paz',         // Bolivia
+  '592': 'America/Guyana',         // Guyana
+  '593': 'America/Guayaquil',      // Ecuador
+  '594': 'America/Cayenne',        // French Guiana
+  '595': 'America/Asuncion',       // Paraguay
+  '596': 'America/Martinique',     // Martinique
+  '597': 'America/Paramaribo',     // Suriname
+  '598': 'America/Montevideo',     // Uruguay
+  '599': 'America/Curacao',        // Curaçao
+  '670': 'Asia/Dili',              // East Timor
+  '672': 'Antarctica/Casey',       // Antarctica
+  '673': 'Asia/Brunei',            // Brunei
+  '674': 'Pacific/Nauru',          // Nauru
+  '675': 'Pacific/Port_Moresby',   // Papua New Guinea
+  '676': 'Pacific/Tongatapu',      // Tonga
+  '677': 'Pacific/Guadalcanal',    // Solomon Islands
+  '678': 'Pacific/Efate',          // Vanuatu
+  '679': 'Pacific/Fiji',           // Fiji
+  '680': 'Pacific/Palau',          // Palau
+  '681': 'Pacific/Wallis',         // Wallis and Futuna
+  '682': 'Pacific/Rarotonga',      // Cook Islands
+  '683': 'Pacific/Niue',           // Niue
+  '685': 'Pacific/Apia',           // Samoa
+  '686': 'Pacific/Tarawa',         // Kiribati
+  '687': 'Pacific/Noumea',         // New Caledonia
+  '688': 'Pacific/Funafuti',       // Tuvalu
+  '689': 'Pacific/Tahiti',         // French Polynesia
+  '690': 'Pacific/Fakaofo',        // Tokelau
+  '691': 'Pacific/Pohnpei',        // Micronesia
+  '692': 'Pacific/Majuro',         // Marshall Islands
+  '850': 'Asia/Pyongyang',         // North Korea
+  '852': 'Asia/Hong_Kong',         // Hong Kong
+  '853': 'Asia/Macau',             // Macau
+  '855': 'Asia/Phnom_Penh',        // Cambodia
+  '856': 'Asia/Vientiane',         // Laos
+  '880': 'Asia/Dhaka',             // Bangladesh
+  '886': 'Asia/Taipei',            // Taiwan
+  '960': 'Indian/Maldives',        // Maldives
+  '961': 'Asia/Beirut',            // Lebanon
+  '962': 'Asia/Amman',             // Jordan
+  '963': 'Asia/Damascus',          // Syria
+  '964': 'Asia/Baghdad',           // Iraq
+  '965': 'Asia/Kuwait',            // Kuwait
+  '966': 'Asia/Riyadh',            // Saudi Arabia
+  '967': 'Asia/Aden',              // Yemen
+  '968': 'Asia/Muscat',            // Oman
+  '970': 'Asia/Gaza',              // Palestine
+  '971': 'Asia/Dubai',             // UAE
+  '972': 'Asia/Jerusalem',         // Israel
+  '973': 'Asia/Bahrain',           // Bahrain
+  '974': 'Asia/Qatar',             // Qatar
+  '975': 'Asia/Thimphu',           // Bhutan
+  '976': 'Asia/Ulaanbaatar',       // Mongolia
+  '977': 'Asia/Kathmandu',         // Nepal
+  '992': 'Asia/Dushanbe',          // Tajikistan
+  '993': 'Asia/Ashgabat',          // Turkmenistan
+  '994': 'Asia/Baku',              // Azerbaijan
+  '995': 'Asia/Tbilisi',           // Georgia
+  '996': 'Asia/Bishkek',           // Kyrgyzstan
+  '998': 'Asia/Tashkent',          // Uzbekistan
+};
+
+/**
+ * Get timezone from phone number
+ */
+export function getTimezoneFromPhone(phoneNumber: string): string {
+  // Remove all non-numeric characters
+  const cleaned = phoneNumber.replace(/\D/g, '');
+
+  // Try matching country codes from longest to shortest
+  for (let len = 4; len >= 1; len--) {
+    const code = cleaned.substring(0, len);
+    if (PHONE_TO_TIMEZONE[code]) {
+      return PHONE_TO_TIMEZONE[code];
+    }
+  }
+
+  // Default fallback
+  return 'Europe/London';
+}
+
+/**
+ * Get current UTC offset for a timezone (handles DST)
+ */
+export function getUTCOffset(ianaTimezone: string, date: Date = new Date()): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: ianaTimezone,
+      timeZoneName: 'shortOffset'
+    });
+
+    const parts = formatter.formatToParts(date);
+    const offsetPart = parts.find(part => part.type === 'timeZoneName');
+
+    if (offsetPart && offsetPart.value.startsWith('GMT')) {
+      const offset = offsetPart.value.replace('GMT', '');
+      return offset === '' ? '+00' : offset;
+    }
+
+    // Fallback: calculate manually
+    const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(date.toLocaleString('en-US', { timeZone: ianaTimezone }));
+    const diff = (tzDate.getTime() - utcDate.getTime()) / 1000 / 60 / 60;
+
+    const hours = Math.floor(Math.abs(diff));
+    const minutes = Math.round((Math.abs(diff) - hours) * 60);
+    const sign = diff >= 0 ? '+' : '-';
+
+    return `${sign}${String(hours).padStart(2, '0')}${minutes > 0 ? ':' + String(minutes).padStart(2, '0') : ''}`;
+  } catch {
+    return '+00';
+  }
+}
+
+/**
+ * Format timezone for display
+ */
+export function formatTimezoneDisplay(ianaTimezone: string, date: Date = new Date()): string {
+  const offset = getUTCOffset(ianaTimezone, date);
+  const tzInfo = COMMON_TIMEZONES.find(tz => tz.iana === ianaTimezone);
+  const label = tzInfo?.label || ianaTimezone.replace(/_/g, ' ');
+
+  return `UTC${offset} ${label}`;
+}
+
+/**
+ * Convert local time in a timezone to UTC
+ */
+export function localToUTC(localDateString: string, ianaTimezone: string): Date {
+  // Parse the local date string as if it's in the specified timezone
+  const localDate = new Date(localDateString);
+
+  // Get the timezone offset in minutes
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: ianaTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  // Create a date in the target timezone with the same local time
+  const parts = formatter.formatToParts(new Date(localDateString));
+  const getValue = (type: string) => parts.find(p => p.type === type)?.value || '';
+
+  const year = getValue('year');
+  const month = getValue('month');
+  const day = getValue('day');
+  const hour = getValue('hour');
+  const minute = getValue('minute');
+  const second = getValue('second');
+
+  // Create ISO string in target timezone
+  const isoString = `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+
+  // Convert to UTC by creating date with timezone context
+  const utcDate = new Date(new Date(isoString + 'Z').toLocaleString('en-US', { timeZone: 'UTC' }));
+  const tzDate = new Date(new Date(isoString + 'Z').toLocaleString('en-US', { timeZone: ianaTimezone }));
+
+  const offset = utcDate.getTime() - tzDate.getTime();
+  return new Date(new Date(localDateString).getTime() + offset);
+}
+
+/**
+ * Convert UTC to local time in a timezone
+ */
+export function utcToLocal(utcDate: Date, ianaTimezone: string): Date {
+  return new Date(utcDate.toLocaleString('en-US', { timeZone: ianaTimezone }));
+}
