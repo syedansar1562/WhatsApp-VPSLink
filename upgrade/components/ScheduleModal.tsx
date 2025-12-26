@@ -141,7 +141,7 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
   const [newMessage, setNewMessage] = useState('');
   const [selectedDate, setSelectedDate] = useState(initialDate ? new Date(initialDate) : tomorrow);
   const [selectedTime, setSelectedTime] = useState(initialTime || '10:00');
-  const [selectedTzIdx, setSelectedTzIdx] = useState(0);
+  const [useRecipientTimezone, setUseRecipientTimezone] = useState(false); // UK time = false, Their time = true
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -155,6 +155,32 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messageParts]);
+
+  // Get selected contact's timezone
+  const contactTimezone = useMemo(() => {
+    if (!selectedContact || !contacts[selectedContact.phone]) {
+      return 'Europe/London';
+    }
+    return contacts[selectedContact.phone].timezone || 'Europe/London';
+  }, [selectedContact, contacts]);
+
+  // Create available timezones: UK and Contact's timezone only
+  const availableTimezones = useMemo(() => {
+    const ukTimezone = { iana: 'Europe/London', label: 'London, UK', utcOffset: 'UTC+00' };
+
+    // If contact is UK-based, only show UK timezone
+    if (contactTimezone === 'Europe/London') {
+      return [ukTimezone];
+    }
+
+    // Find contact's timezone in COMMON_TIMEZONES
+    const contactTz = COMMON_TIMEZONES.find(tz => tz.iana === contactTimezone);
+    if (!contactTz) {
+      return [ukTimezone];
+    }
+
+    return [ukTimezone, contactTz];
+  }, [contactTimezone]);
 
   const filteredContacts = useMemo(() => {
     const entries = Object.entries(contacts);
@@ -209,7 +235,10 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
     const date = new Date(selectedDate);
     date.setHours(hours, minutes, 0, 0);
 
-    const targetTz = COMMON_TIMEZONES[selectedTzIdx];
+    // Use UK time or contact's timezone
+    const targetTz = useRecipientTimezone && availableTimezones.length > 1
+      ? availableTimezones[1]
+      : availableTimezones[0];
 
     const format = (d: Date, tzLabel: string) => {
       const day = d.getDate();
@@ -222,16 +251,16 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
     const recipientTime = format(date, formatTimezoneDisplay(targetTz.iana));
 
     const userOffsetMinutes = new Date().getTimezoneOffset();
-    const targetOffsetMinutes = targetTz.utcOffset.replace('UTC', '').replace('+', '').replace('-', '-') as any * 60;
+    const targetOffsetMinutes = parseFloat(targetTz.utcOffset.replace('UTC', '').replace('+', '')) * 60;
     const localDate = new Date(date.getTime() - (targetOffsetMinutes + userOffsetMinutes) * 60000);
 
     const localOffset = -new Date().getTimezoneOffset() / 60;
     const sign = localOffset >= 0 ? '+' : '';
-    const yourTzLabel = `Local UTC${sign}${localOffset}`;
+    const yourTzLabel = `UK Time UTC${sign}${localOffset}`;
     const yourTime = format(localDate, yourTzLabel);
 
     return { yourTime, recipientTime };
-  }, [selectedDate, selectedTime, selectedTzIdx]);
+  }, [selectedDate, selectedTime, useRecipientTimezone, availableTimezones]);
 
   const handleSchedule = async () => {
     if (!selectedContact || messageParts.length === 0) {
@@ -242,32 +271,99 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
     setLoading(true);
 
     try {
-      const messageText = messageParts.map(p => p.text).join('\n\n');
-      const targetTimezone = COMMON_TIMEZONES[selectedTzIdx].iana;
+      const targetTz = useRecipientTimezone && availableTimezones.length > 1
+        ? availableTimezones[1]
+        : availableTimezones[0];
+      const targetTimezone = targetTz.iana;
       const localDateTime = `${selectedDate.toISOString().split('T')[0]}T${selectedTime}:00`;
       const utcTime = localToUTC(localDateTime, targetTimezone);
 
-      const response = await fetch('/api/scheduled', {
-        method: initialData.messageId ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: initialData.messageId,
+      // Check if single or multi-part message
+      if (messageParts.length === 1) {
+        // Single message - use /api/scheduled
+        const messageText = messageParts[0].text;
+
+        // Fetch existing messages
+        const existingResponse = await fetch('/api/scheduled');
+        const existingData = await existingResponse.json();
+        const messages = existingData.messages || [];
+
+        // Create new message object
+        const newMessage = {
+          id: initialData.messageId || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           to: selectedContact.phone,
           contactName: selectedContact.name,
           message: messageText,
-          scheduledTime: utcTime,
+          scheduledTime: utcTime.toISOString(),
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          createdFrom: 'web',
+          sentAt: null,
           recipientTimezone: targetTimezone,
           scheduledInTimezone: targetTimezone,
           recipientLocalTime: selectedTime
-        })
-      });
+        };
 
-      if (response.ok) {
-        onClose();
-        window.location.reload();
+        // Update or add message
+        let updatedMessages;
+        if (initialData.messageId) {
+          updatedMessages = messages.map((m: any) =>
+            m.id === initialData.messageId ? newMessage : m
+          );
+        } else {
+          updatedMessages = [...messages, newMessage];
+        }
+
+        // Save all messages
+        const response = await fetch('/api/scheduled', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: updatedMessages })
+        });
+
+        if (!response.ok) {
+          alert('Failed to schedule message');
+          return;
+        }
       } else {
-        alert('Failed to schedule message');
+        // Multi-part message - use /api/scheduler/jobs
+        const cleanPhone = selectedContact.phone.replace(/^\+/, '').replace(/\s/g, '');
+        const jid = cleanPhone.includes('@') ? cleanPhone : `${cleanPhone}@s.whatsapp.net`;
+
+        const jobData = {
+          scheduledStartAt: utcTime.toISOString(),
+          recipients: [jid],
+          messageParts: messageParts.map(part => ({
+            text: part.text,
+            delayAfterSeconds: 5
+          })),
+          config: {
+            intervalMode: 'manual',
+            recipientGapSeconds: 30,
+            maxRetries: 3
+          },
+          timezoneMetadata: {
+            recipientTimezone: targetTimezone,
+            scheduledInTimezone: targetTimezone,
+            recipientLocalTime: selectedTime
+          }
+        };
+
+        const response = await fetch('/api/scheduler/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(jobData)
+        });
+
+        if (!response.ok) {
+          alert('Failed to schedule multi-part message');
+          return;
+        }
       }
+
+      // Success - close modal and reload
+      onClose();
+      window.location.reload();
     } catch (error) {
       console.error('Error scheduling message:', error);
       alert('An error occurred');
@@ -498,26 +594,52 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
 
               <div className="mb-6">
                 <label className="block text-xs font-semibold text-[#737373] uppercase tracking-wider mb-3">Select Time</label>
-                <div className="flex gap-3">
-                  <div className="relative flex-1">
-                    <input
-                      type="time"
-                      value={selectedTime}
-                      onChange={(e) => setSelectedTime(e.target.value)}
-                      className="w-full bg-[#27272a] border border-[#404040] rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-[#25D366]/50 focus:border-[#25D366] focus:outline-none"
-                    />
-                  </div>
-                  <div className="relative flex-1">
-                    <select
-                      value={selectedTzIdx}
-                      onChange={(e) => setSelectedTzIdx(Number(e.target.value))}
-                      className="w-full bg-[#27272a] border border-[#404040] rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-[#25D366]/50 focus:border-[#25D366] focus:outline-none appearance-none cursor-pointer"
-                    >
-                      {COMMON_TIMEZONES.map((tz, i) => (
-                        <option key={tz.iana} value={i}>{tz.utcOffset} {tz.label}</option>
-                      ))}
-                    </select>
-                  </div>
+
+                {/* Time Input */}
+                <div className="mb-4">
+                  <input
+                    type="time"
+                    value={selectedTime}
+                    onChange={(e) => setSelectedTime(e.target.value)}
+                    className="w-full bg-[#27272a] border border-[#404040] rounded-xl px-4 py-3 text-white text-sm focus:ring-2 focus:ring-[#25D366]/50 focus:border-[#25D366] focus:outline-none"
+                  />
+                </div>
+
+                {/* Timezone Selection - Only UK and Contact's Timezone */}
+                <div className="mb-4">
+                  <label className="block text-xs font-semibold text-[#737373] uppercase tracking-wider mb-3">Timezone</label>
+                  {availableTimezones.length === 1 ? (
+                    // UK contact - show only UK timezone (disabled)
+                    <div className="w-full bg-[#27272a] border border-[#404040] rounded-xl px-4 py-3 text-white text-sm opacity-60 cursor-not-allowed">
+                      <span className="text-[#25D366]">✓</span> UK Time ({formatTimezoneDisplay('Europe/London')})
+                    </div>
+                  ) : (
+                    // International contact - show UK and their timezone
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => setUseRecipientTimezone(false)}
+                        className={`w-full px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                          !useRecipientTimezone
+                            ? 'bg-[#25D366] text-white shadow-md'
+                            : 'bg-[#27272a] border border-[#404040] text-[#a3a3a3] hover:bg-white/5'
+                        }`}
+                      >
+                        {!useRecipientTimezone && <span className="mr-2">✓</span>}
+                        UK Time ({formatTimezoneDisplay('Europe/London')})
+                      </button>
+                      <button
+                        onClick={() => setUseRecipientTimezone(true)}
+                        className={`w-full px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                          useRecipientTimezone
+                            ? 'bg-[#25D366] text-white shadow-md'
+                            : 'bg-[#27272a] border border-[#404040] text-[#a3a3a3] hover:bg-white/5'
+                        }`}
+                      >
+                        {useRecipientTimezone && <span className="mr-2">✓</span>}
+                        Their Time ({formatTimezoneDisplay(contactTimezone)})
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Time Summary */}
