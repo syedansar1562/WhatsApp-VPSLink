@@ -1,11 +1,11 @@
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 
 const s3Client = new S3Client({
-  endpoint: process.env.B2_S3_ENDPOINT!,
+  endpoint: process.env.B2_ENDPOINT!,
   region: 'eu-central-003',
   credentials: {
-    accessKeyId: process.env.B2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.B2_SECRET_ACCESS_KEY!
+    accessKeyId: process.env.B2_KEY_ID!,
+    secretAccessKey: process.env.B2_APP_KEY!
   }
 });
 
@@ -41,8 +41,8 @@ export interface ScheduledMessage {
 
 export async function getContacts(): Promise<Record<string, Contact>> {
   const command = new GetObjectCommand({
-    Bucket: process.env.B2_BUCKET!,
-    Key: `${process.env.B2_PREFIX}contacts.json`
+    Bucket: process.env.B2_BUCKET_NAME!,
+    Key: 'whatsapp/contacts.json'
   });
 
   const response = await s3Client.send(command);
@@ -52,8 +52,8 @@ export async function getContacts(): Promise<Record<string, Contact>> {
 
 export async function saveContacts(contacts: Record<string, Contact>): Promise<void> {
   const command = new PutObjectCommand({
-    Bucket: process.env.B2_BUCKET!,
-    Key: `${process.env.B2_PREFIX}contacts.json`,
+    Bucket: process.env.B2_BUCKET_NAME!,
+    Key: 'whatsapp/contacts.json',
     Body: JSON.stringify(contacts, null, 2),
     ContentType: 'application/json'
   });
@@ -64,8 +64,8 @@ export async function saveContacts(contacts: Record<string, Contact>): Promise<v
 export async function getScheduledMessages(): Promise<{ messages: ScheduledMessage[] }> {
   try {
     const command = new GetObjectCommand({
-      Bucket: process.env.B2_BUCKET!,
-      Key: `${process.env.B2_PREFIX}scheduled.json`
+      Bucket: process.env.B2_BUCKET_NAME!,
+      Key: 'whatsapp/scheduled-messages.json'
     });
 
     const response = await s3Client.send(command);
@@ -81,8 +81,8 @@ export async function getScheduledMessages(): Promise<{ messages: ScheduledMessa
 
 export async function saveScheduledMessages(data: { messages: ScheduledMessage[] }): Promise<void> {
   const command = new PutObjectCommand({
-    Bucket: process.env.B2_BUCKET!,
-    Key: `${process.env.B2_PREFIX}scheduled.json`,
+    Bucket: process.env.B2_BUCKET_NAME!,
+    Key: 'whatsapp/scheduled-messages.json',
     Body: JSON.stringify(data, null, 2),
     ContentType: 'application/json'
   });
