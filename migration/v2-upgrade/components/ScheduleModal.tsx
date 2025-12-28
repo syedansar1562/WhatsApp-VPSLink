@@ -278,6 +278,34 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
       const localDateTime = `${selectedDate.toISOString().split('T')[0]}T${selectedTime}:00`;
       const utcTime = localToUTC(localDateTime, targetTimezone);
 
+      // If editing, first delete the old message/job
+      if (initialData.messageId) {
+        // Try to delete from both scheduled messages and jobs
+        try {
+          // Delete from scheduled messages
+          const scheduledResponse = await fetch('/api/scheduled');
+          const scheduledData = await scheduledResponse.json();
+          const scheduledMessages = scheduledData.messages || [];
+          const filteredScheduled = scheduledMessages.filter((m: any) => m.id !== initialData.messageId);
+
+          if (filteredScheduled.length < scheduledMessages.length) {
+            // Message was found and removed, save the updated list
+            await fetch('/api/scheduled', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ messages: filteredScheduled })
+            });
+          }
+
+          // Delete from jobs (if it was a job)
+          await fetch(`/api/scheduler/jobs/${initialData.messageId}`, {
+            method: 'DELETE'
+          });
+        } catch (err) {
+          console.log('Error cleaning up old message:', err);
+        }
+      }
+
       // Check if single or multi-part message
       if (messageParts.length === 1) {
         // Single message - use /api/scheduled
@@ -288,9 +316,9 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
         const existingData = await existingResponse.json();
         const messages = existingData.messages || [];
 
-        // Create new message object
+        // Create new message object (always generate new ID if editing since we deleted the old one)
         const newMessage = {
-          id: initialData.messageId || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           to: selectedContact.phone,
           contactName: selectedContact.name,
           message: messageText,
@@ -304,15 +332,8 @@ export default function ScheduleModal({ onClose, initialData = {} }: ScheduleMod
           recipientLocalTime: selectedTime
         };
 
-        // Update or add message
-        let updatedMessages;
-        if (initialData.messageId) {
-          updatedMessages = messages.map((m: any) =>
-            m.id === initialData.messageId ? newMessage : m
-          );
-        } else {
-          updatedMessages = [...messages, newMessage];
-        }
+        // Add new message (old one was already deleted if editing)
+        const updatedMessages = [...messages, newMessage];
 
         // Save all messages
         const response = await fetch('/api/scheduled', {
