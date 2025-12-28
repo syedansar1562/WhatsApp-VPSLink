@@ -22,3 +22,9 @@ qr.png
 
 # Environment variables (contains secrets)
 .env
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+data/
