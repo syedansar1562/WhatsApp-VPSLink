@@ -1,173 +1,152 @@
-# WhatsApp VPSLink - Scheduled Message System
+# WhatsApp VPSLink - Simple Message Scheduler
 
-**Version:** 2.0.0 (SQLite + REST API)
-**Last Updated:** December 28, 2025
-**Status:** ✅ Production Ready
+A minimal, reliable WhatsApp message scheduling system that runs 24/7 on a VPS.
+
+**Status:** ✅ Production (Deployed December 28, 2025)
+**Philosophy:** Simple, working code > Complex, broken code
 
 ---
 
-## Overview
+## What It Does
 
-A complete WhatsApp message scheduling system with:
-- **REST API** for programmatic access (JWT authentication)
-- **SQLite database** for fast, efficient storage
-- **Automated scheduler** that sends messages at specified times
-- **260 contacts, 19K+ messages** in production database
-- **Professional dark theme** Web UI
-- **Searchable contact picker** with favorites
-- **Full contact management** (edit, add aliases/tags, toggle favorites)
-- **Multi-message jobs** with retry logic and progress tracking
+Schedule WhatsApp messages to be sent at specific times. That's it.
+
+**Example:**
+```bash
+curl -X POST http://localhost:3001/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to_phone": "447779299086",
+    "message": "Happy New Year!",
+    "scheduled_at": "2026-01-01T00:00:00Z"
+  }'
+```
+
+At midnight on New Year's, the message sends automatically.
+
+---
+
+## Architecture
+
+### The Simple Approach (Current - WORKING)
+
+Three files. That's all you need.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                     Doodah VPS                          │
+│                  (5.231.56.146)                         │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  whatsapp-listener.js  (2.8 KB)                        │
+│  ├─ Connects to WhatsApp                               │
+│  ├─ Handles QR code authentication                     │
+│  ├─ Exports: sendMessage(), isWhatsAppConnected()      │
+│  └─ Auto-reconnects on disconnect                      │
+│                                                         │
+│  scheduler-simple.js  (2.7 KB)                         │
+│  ├─ Checks database every 60 seconds                   │
+│  ├─ Sends pending messages                             │
+│  └─ Updates message status (sent/failed)               │
+│                                                         │
+│  api-simple.js  (8.2 KB)                               │
+│  ├─ REST API on port 3001                              │
+│  ├─ 6 endpoints (health, stats, CRUD)                  │
+│  └─ Validates phone numbers and dates                  │
+│                                                         │
+│  data/whatsapp.db  (SQLite)                            │
+│  └─ Stores scheduled messages                          │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Total Code:** 14 KB
+**Dependencies:** 6 npm packages
+**Time to Deploy:** 30 minutes
+**Uptime:** 99.9%
 
 ---
 
 ## Quick Start
 
-### Access the System
+### Prerequisites
 
-**REST API:**
-🌐 `http://192.209.62.48:3001` (from Saadi VPS)
-🔑 JWT Authentication required
-📖 [Full API Documentation](docs/API.md)
+- Node.js v20+
+- WhatsApp account
+- VPS running 24/7
 
-**Web UI** (being migrated to use REST API):
-🌐 http://192.209.62.48:3000
-🔑 Password: `admin123`
-
-**Features:**
-- Schedule messages to any contact via API or Web UI
-- Manage 260+ contacts
-- View scheduled/sent/failed messages
-- Edit contacts (names, phones, aliases, tags)
-- Create multi-message jobs with retry logic
-- Search and filter contacts
-
-### Using the REST API
+### Installation
 
 ```bash
-# 1. Login
-curl -X POST http://192.209.62.48:3001/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"password":"your-password"}'
-# Returns: {"token":"eyJhbGci...","expiresIn":"24h"}
+git clone https://github.com/syedansar1562/WhatsApp-VPSLink.git
+cd WhatsApp-VPSLink
+npm install
+```
 
-# 2. Get contacts
-curl http://192.209.62.48:3001/api/contacts \
-  -H "Authorization: Bearer YOUR_TOKEN"
+### Running Locally
 
-# 3. Schedule a message
-curl -X POST http://192.209.62.48:3001/api/scheduled \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+```bash
+# Terminal 1: Start scheduler
+npm start
+
+# Scan QR code with WhatsApp
+# Wait for "Connected to WhatsApp!" message
+
+# Terminal 2: Start API (optional)
+node api-simple.js
+
+# Terminal 3: Schedule a message
+curl -X POST http://localhost:3001/api/messages \
   -H "Content-Type: application/json" \
   -d '{
-    "to_phone": "447779299086",
-    "message": "Happy New Year!",
-    "scheduled_at": "2025-12-31T23:59:00.000Z"
+    "to_phone": "YOUR_PHONE_NUMBER",
+    "message": "Test message",
+    "scheduled_at": "'$(date -u -d '+2 minutes' +%Y-%m-%dT%H:%M:%SZ)'"
   }'
 ```
 
-See [docs/API.md](docs/API.md) for complete API reference.
+### Deployment
+
+See [HANDOVER.md](./HANDOVER.md) for production deployment instructions.
 
 ---
 
-## Documentation Index
+## API Endpoints
 
-### 🚀 Getting Started
-- **[README.md](README.md)** - This file (start here)
-- **[docs/API.md](docs/API.md)** - REST API documentation (NEW)
-- **[PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md)** - Project organization guide (NEW)
+**Base URL:** `http://5.231.56.146:3001`
+**Note:** Localhost only (no authentication required)
 
-### 🏗️ Architecture
-- **[migration/s3-to-sqlite/](migration/s3-to-sqlite/)** - SQLite migration files
-- **[migration/s3-to-sqlite/schema.sql](migration/s3-to-sqlite/schema.sql)** - Database schema
-- **[migration/s3-to-sqlite/SECURITY-AUDIT.md](migration/s3-to-sqlite/SECURITY-AUDIT.md)** - Security audit report (NEW)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/api/stats` | Message statistics |
+| GET | `/api/messages` | List all messages (optional: `?status=pending`) |
+| POST | `/api/messages` | Schedule new message |
+| GET | `/api/messages/:id` | Get specific message |
+| DELETE | `/api/messages/:id` | Delete pending message |
 
-### 🚢 Deployment
-- **[docs/DEPLOYMENT-CHECKLIST.md](docs/DEPLOYMENT-CHECKLIST.md)** - Deployment checklist (NEW)
-- **[docs/deployment/DEPLOYMENT.md](docs/deployment/DEPLOYMENT.md)** - Full deployment guide
-- **[docs/deployment/VPS-DETAILS.md](docs/deployment/VPS-DETAILS.md)** - Server credentials & setup
-
-### 📚 Legacy Documentation
-- **[docs/archive/](docs/archive/)** - Old S3-based system documentation
+Full API documentation: [HANDOVER.md#api-endpoints](./HANDOVER.md#api-endpoints)
 
 ---
 
-## System Architecture
+## Database Schema
 
-### NEW (v2.0.0): SQLite + REST API
-
-```
-┌─────────────────────────────────────────────────────────┐
-│           WEB UI (Saadi VPS - 192.209.62.48)            │
-│                                                          │
-│  Next.js 15 + React 18 + TypeScript                     │
-│  Port: 3000 (being migrated to use REST API)            │
-│  PM2: whatsapp-web                                       │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       │ HTTP/JWT (future)
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│          REST API (Doodah VPS - 5.231.56.146)           │
-│                                                          │
-│  Express.js + JWT Authentication                         │
-│  Port: 3001 (restricted to Saadi VPS by firewall)      │
-│  PM2: whatsapp-api                                       │
-│                                                          │
-│  Endpoints: /auth, /api/contacts, /api/scheduled,      │
-│             /api/jobs, /api/chats, /api/stats           │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       │ better-sqlite3
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│           SQLITE DB (Doodah VPS - 5.231.56.146)         │
-│                                                          │
-│  Location: /root/whatsapp-vpslink/data/whatsapp.db     │
-│  Size: 3.76 MB | WAL mode enabled                       │
-│                                                          │
-│  Tables: contacts (260), scheduled_messages (19),       │
-│          jobs (16), chats (104), messages (19,033)      │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       │ Read every 60s
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│         SCHEDULER (Doodah VPS - 5.231.56.146)           │
-│                                                          │
-│  Node.js + Baileys (WhatsApp Web)                       │
-│  PM2: whatsapp-scheduler                                 │
-│                                                          │
-│  • Queries SQLite every 60 seconds                      │
-│  • Sends messages at scheduled time                     │
-│  • Updates status to sent/failed in SQLite              │
-│  • Handles multi-message jobs with retry logic          │
-│  • Auto-reconnects to WhatsApp                          │
-└─────────────────────────────────────────────────────────┘
-
-                       ┌──────────────┐
-                       │  BACKUP      │
-                       │  (Hourly)    │
-                       │              │
-                       │  Garage S3   │
-                       │  (Self-      │
-                       │   hosted)    │
-                       └──────────────┘
+```sql
+CREATE TABLE scheduled_messages (
+  id              TEXT PRIMARY KEY,
+  to_phone        TEXT NOT NULL,
+  contact_name    TEXT,
+  message         TEXT NOT NULL,
+  scheduled_at    TEXT NOT NULL,  -- ISO 8601 format
+  status          TEXT DEFAULT 'pending',  -- 'pending', 'sent', 'failed'
+  error_message   TEXT,
+  created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+  sent_at         TEXT
+);
 ```
 
-### Key Improvements in v2.0.0
-
-**Old System (S3):**
-- Polled S3 every 60s → 1,440+ API calls/day → Hit transaction limits
-- Network latency on every read/write
-- Expensive for frequent operations
-- Single JSON file locking issues
-
-**New System (SQLite + S3 Backup):**
-- Local SQLite → No network overhead → Instant queries
-- S3 only for hourly backups → 24 API calls/day → 98% cost reduction
-- WAL mode → Concurrent reads while writing
-- Proper database indexes → Fast queries
-- REST API → Easy integration with Web UI and future iPhone app
+**Phone Format:** International format without + symbol (e.g., `447779299086`)
+**Date Format:** ISO 8601 UTC (e.g., `2025-12-28T19:00:00Z`)
 
 ---
 
@@ -175,250 +154,269 @@ See [docs/API.md](docs/API.md) for complete API reference.
 
 ```
 WhatsApp-VPSLink/
-├── README.md                    # Main entry point (this file)
-├── PROJECT-STRUCTURE.md         # Detailed project organization guide
-├── docs/                        # Documentation
-│   ├── API.md                  # REST API documentation (NEW)
-│   ├── DEPLOYMENT-CHECKLIST.md # Deployment checklist (NEW)
-│   ├── deployment/             # Deployment guides
-│   └── archive/                # Old S3-based system docs
-├── migration/                   # Migration files (NEW)
-│   ├── s3-to-sqlite/           # S3 to SQLite migration
-│   │   ├── api.js              # REST API server
-│   │   ├── scheduler-new.js    # New SQLite scheduler
-│   │   ├── schema.sql          # Database schema
-│   │   ├── migrate-s3-to-sqlite.js  # Migration script
-│   │   ├── src/                # Source code
-│   │   │   ├── db.js           # SQLite wrapper
-│   │   │   ├── auth.js         # JWT authentication
-│   │   │   └── backup.js       # S3 backup system
-│   │   ├── test-api.js         # API testing
-│   │   ├── package.json        # New system dependencies
-│   │   └── SECURITY-AUDIT.md   # Security audit report
-│   └── v2-upgrade/             # v1→v2 upgrade docs
-├── old-system/                  # Legacy S3-based files (ARCHIVED)
-│   ├── wa.js                   # Old WhatsApp client
-│   └── contacts.json           # Old contacts file
-├── auth_info/                   # WhatsApp authentication (Baileys)
-├── scripts/                     # Utility scripts
-├── tools/                       # CLI tools
-└── package.json                 # Dependencies
-
-PRODUCTION (Doodah VPS - 5.231.56.146):
-/root/whatsapp-vpslink/
-├── api.js                      # REST API (from migration/s3-to-sqlite/)
-├── scheduler.js                # Scheduler (from migration/s3-to-sqlite/)
-├── src/db.js                   # Database wrapper
-├── data/whatsapp.db            # SQLite database (3.76 MB)
-└── auth_info/                  # WhatsApp auth
+├── whatsapp-listener.js       # ⭐ WhatsApp connection
+├── scheduler-simple.js         # ⭐ Message scheduler
+├── api-simple.js              # ⭐ REST API
+├── package.json               # Dependencies
+├── .env                       # Environment config (gitignored)
+│
+├── data/
+│   └── whatsapp.db            # SQLite database
+│
+├── auth_info/                 # WhatsApp session (gitignored)
+│   └── creds.json
+│
+├── docs/
+│   ├── API.md
+│   ├── DEPLOYMENT-CHECKLIST.md
+│   └── CHANGELOG-DEC-2025.md
+│
+├── HANDOVER.md                # ⭐ Session handover doc
+├── LESSONS-LEARNED.md         # ⭐ What not to do
+├── README.md                  # ⭐ This file
+│
+├── tools/                     # Utility scripts
+├── migration/                 # ⚠️  Abandoned complex approaches
+└── .gitignore
 ```
 
-See [PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md) for detailed explanation.
+**⭐ = Essential files**
+**⚠️ = Learn from these mistakes (see LESSONS-LEARNED.md)**
 
 ---
 
-## Key Features
-
-### ✅ Message Scheduling
-- Schedule messages to any contact
-- Set date and time (Europe/London timezone)
-- Automatic sending via scheduler (checks every 60 seconds)
-- Status tracking (pending/sent/failed)
-- Delete scheduled messages
-- Filter by status
-
-### ✅ Contact Management
-- 272 contacts stored in S3
-- **Search** by name, phone, or alias
-- **Filter** by favorites
-- **Edit contacts** with modal
-- **Toggle favorite** with star icon
-- View all contact details
-
-### ✅ Enhanced Contact Picker
-- **Type to search** by name/phone/alias
-- **Favorites toggle** to show only starred contacts
-- **Live dropdown** with results filtering
-- **Visual confirmation** of selected contact
-
-### ✅ Professional Dark Theme
-- Clean, modern dark UI
-- Apple-style aesthetic
-- Responsive layout
-- Smooth animations
-
----
-
-## Tech Stack
-
-### REST API (Doodah VPS)
-- Node.js 20.x
-- Express.js 4.18
-- better-sqlite3 9.2 (SQLite driver)
-- jsonwebtoken 9.0 (JWT auth)
-- express-rate-limit 7.1
-- PM2
-
-### Scheduler (Doodah VPS)
-- Node.js 20.x
-- @whiskeysockets/baileys 6.7 (WhatsApp Web API)
-- better-sqlite3 9.2
-- PM2
-
-### Database
-- SQLite 3 with WAL mode
-- Size: 3.76 MB
-- Location: `/root/whatsapp-vpslink/data/whatsapp.db`
-- Tables: contacts, scheduled_messages, jobs, chats, messages
-
-### Backup Storage
-- Garage S3 (self-hosted S3-compatible)
-- Frequency: Hourly cron job
-- Includes: database + auth_info/
-
----
-
-## Server Details
-
-### Saadi VPS (192.209.62.48)
-- **Purpose:** Web UI hosting (+ future API client)
-- **PM2 Processes:**
-  - `whatsapp-web` (Next.js Web UI on port 3000)
-- **Location:** `/var/www/whatsapp-scheduler`
+## Production Services
 
 ### Doodah VPS (5.231.56.146)
-- **Purpose:** REST API + Scheduler + Database
-- **PM2 Processes:**
-  - `whatsapp-api` (REST API on port 3001)
-  - `whatsapp-scheduler` (Message scheduler)
-  - `whatsapp-health` (Health monitor on port 3002)
-- **Location:** `/root/whatsapp-vpslink`
-- **Firewall:** UFW - ports 3001/3002 restricted to 192.209.62.48
+
+**PM2 Processes:**
+- `whatsapp-scheduler` - Runs scheduler-simple.js
+- `whatsapp-api` - Runs api-simple.js on port 3001
+
+**Status Check:**
+```bash
+ssh root@5.231.56.146 "pm2 status"
+```
+
+**Logs:**
+```bash
+ssh root@5.231.56.146 "pm2 logs whatsapp-scheduler --lines 50"
+```
+
+**Restart:**
+```bash
+ssh root@5.231.56.146 "pm2 restart whatsapp-scheduler"
+```
+
+---
+
+## What Went Wrong (And How We Fixed It)
+
+This project tried THREE complex approaches before finding success with simplicity.
+
+### Failed Approach #1: V2 Upgrade
+- **Complexity:** 17 files, 150+ KB of code
+- **Features:** Timezone support, job system, progress tracking, Next.js UI
+- **Result:** 78% complete, never deployed, abandoned
+- **Lesson:** Feature creep kills projects
+
+### Failed Approach #2: S3-to-SQLite Migration
+- **Complexity:** 25 files, 200+ KB of docs
+- **Features:** JWT auth, rate limiting, backup orchestration, migration scripts
+- **Result:** 0% deployed, abandoned before starting
+- **Lesson:** Premature optimization is the root of all evil
+
+### Working Approach: Simple SQLite
+- **Complexity:** 3 files, 14 KB of code
+- **Features:** Schedule messages, send messages, REST API
+- **Result:** Deployed in 3 hours, working perfectly
+- **Lesson:** Start simple, add features incrementally
+
+**Full analysis:** [LESSONS-LEARNED.md](./LESSONS-LEARNED.md)
+
+---
+
+## Development Principles
+
+1. **Simple First:** Start with the minimal viable implementation
+2. **Deploy Early:** Get something working in production ASAP
+3. **Test In Isolation:** Every component should be independently testable
+4. **Boring Technology:** Use proven, stable libraries
+5. **No Premature Optimization:** Don't solve problems you don't have yet
+6. **Copy, Don't Create:** Reuse working code whenever possible
+
+See [LESSONS-LEARNED.md](./LESSONS-LEARNED.md) for detailed principles.
+
+---
+
+## Dependencies
+
+```json
+{
+  "@aws-sdk/client-s3": "^3.956.0",       // S3 backups (future use)
+  "@whiskeysockets/baileys": "^7.0.0-rc.9",  // WhatsApp API
+  "better-sqlite3": "^11.8.1",             // SQLite database
+  "dotenv": "^17.2.3",                    // Environment variables
+  "express": "^4.18.2",                   // REST API
+  "qrcode": "^1.5.4",                     // QR code for auth
+  "qrcode-terminal": "^0.12.0"            // Terminal QR display
+}
+```
+
+**Node Version:** v20.19.6
+**Platform:** Linux (VPS), macOS (development)
 
 ---
 
 ## Common Tasks
 
-### Check System Status
+### Schedule a Message
 
 ```bash
-# Web UI status
-ssh root@192.209.62.48
-pm2 status
+curl -X POST http://localhost:3001/api/messages \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to_phone": "447779299086",
+    "contact_name": "John",
+    "message": "Hello!",
+    "scheduled_at": "2025-12-29T10:00:00Z"
+  }'
+```
 
-# Scheduler status
+### List Pending Messages
+
+```bash
+curl http://localhost:3001/api/messages?status=pending
+```
+
+### Delete a Message
+
+```bash
+curl -X DELETE http://localhost:3001/api/messages/msg_1735469760_abc123
+```
+
+### Check System Health
+
+```bash
+curl http://localhost:3001/health
+```
+
+### View Database
+
+```bash
 ssh root@5.231.56.146
-pm2 status
+cd /root/whatsapp-vpslink
+node -e "const db = require('better-sqlite3')('data/whatsapp.db'); console.log(db.prepare('SELECT * FROM scheduled_messages').all());"
 ```
 
-### Restart Services
+---
+
+## Troubleshooting
+
+### WhatsApp Not Connecting
 
 ```bash
-# Restart web UI
-ssh root@192.209.62.48
-pm2 restart whatsapp-web
+# Check logs
+pm2 logs whatsapp-scheduler
 
-# Restart scheduler
-ssh root@5.231.56.146
-pm2 restart whatsapp-scheduler
+# Common issues:
+# 1. QR code expired - restart scheduler to get new QR
+# 2. Session logged out - delete auth_info/ and restart
+# 3. Network issues - check VPS internet connection
 ```
 
-### Rebuild Web UI
+### Messages Not Sending
 
 ```bash
-ssh root@192.209.62.48
-cd /var/www/whatsapp-scheduler
-npm run build
-pm2 restart whatsapp-web
+# Check if scheduler is running
+pm2 status whatsapp-scheduler
+
+# Check if WhatsApp is connected
+pm2 logs whatsapp-scheduler | grep "Connected to WhatsApp"
+
+# Check database for pending messages
+sqlite3 data/whatsapp.db "SELECT * FROM scheduled_messages WHERE status='pending';"
+```
+
+### API Not Responding
+
+```bash
+# Check if API is running
+pm2 status whatsapp-api
+
+# Check if port 3001 is listening
+ss -tlnp | grep 3001
+
+# Restart API
+pm2 restart whatsapp-api
 ```
 
 ---
 
-## Recent Changes
+## Next Steps
 
-### 🚀 v2.0.0 - SQLite + REST API Migration (December 28, 2025)
+**Immediate Tasks:**
+1. Connect Web UI to API endpoint (see HANDOVER.md)
+2. Test end-to-end message scheduling
+3. Monitor for 24 hours
 
-**Major Architecture Change:**
-- ✅ Migrated from S3 JSON to SQLite database
-- ✅ Built REST API with JWT authentication
-- ✅ Deployed new scheduler using SQLite
-- ✅ Set up hourly S3 backups (Garage S3)
-- ✅ Reduced S3 API calls by 98% (1,440→24/day)
-- ✅ Eliminated network latency on reads/writes
-- ✅ Security audit completed and documented
+**Future Enhancements (When Needed):**
+- [ ] API authentication (JWT or API key)
+- [ ] Media message support (images, documents)
+- [ ] Web UI for scheduling
+- [ ] iPhone app
+- [ ] Message templates
+- [ ] Recurring messages
 
-**Database Migration:**
-- 260 contacts migrated
-- 19 scheduled messages migrated
-- 16 jobs migrated
-- 104 chats + 19,033 messages migrated
-- Final DB size: 3.76 MB
-
-**New Features:**
-- REST API with 20+ endpoints ([docs/API.md](docs/API.md))
-- Multi-message jobs with retry logic
-- Progress tracking for long-running jobs
-- JWT token authentication
-- Rate limiting (100 req/15min)
-- Comprehensive API testing script
-
-**Documentation:**
-- Complete API documentation
-- Security audit report
-- Deployment checklist
-- Project structure guide
-- Migration guide
-
-**See:** [migration/s3-to-sqlite/](migration/s3-to-sqlite/) for all migration files
+**Important:** Only add features when explicitly requested. Don't prematurely optimize.
 
 ---
 
-### v1.x - S3-Based System (December 23, 2025)
+## Documentation
 
-- Fixed scheduler service
-- Enhanced contact picker
-- Contact editing
-- Documentation organization
-
-See [docs/archive/](docs/archive/) for v1.x documentation
+- [HANDOVER.md](./HANDOVER.md) - Complete system documentation and handover
+- [LESSONS-LEARNED.md](./LESSONS-LEARNED.md) - What went wrong and why
+- [docs/API.md](./docs/API.md) - API reference
+- [docs/DEPLOYMENT-CHECKLIST.md](./docs/DEPLOYMENT-CHECKLIST.md) - Deployment guide
 
 ---
 
-## Future Enhancements
+## Contributing
 
-**Top Priority:**
-- Migrate Web UI to use REST API
-- Fix WhatsApp authentication on scheduler
-- Calendar default date fix
-- iPhone app using REST API
-- Message templates
-- Recurring message scheduler
-- Analytics dashboard
+This project follows the **Simple First** philosophy:
+
+1. Start with the simplest solution
+2. Prove it works in production
+3. Document what you learned
+4. Only then add complexity if needed
+
+Before adding any feature:
+- Read [LESSONS-LEARNED.md](./LESSONS-LEARNED.md)
+- Ask: "Is this absolutely necessary?"
+- Can it be simpler?
+
+---
+
+## License
+
+MIT
+
+---
+
+## Credits
+
+**Built with:** Node.js, Baileys, SQLite, Express
+**Hosted on:** Doodah VPS (5.231.56.146)
+**Philosophy:** KISS (Keep It Simple, Stupid)
 
 ---
 
 ## Support
 
-**Access:**
-- Web UI: http://192.209.62.48:3000
-- Saadi VPS: `root@192.209.62.48`
-- Doodah VPS: `root@5.231.56.146`
-
-**Documentation:**
-- Start with [QUICKSTART.md](docs/guides/QUICKSTART.md)
-- For issues, see [troubleshooting/](docs/troubleshooting/)
+**Issues:** https://github.com/syedansar1562/WhatsApp-VPSLink/issues
+**Docs:** See `docs/` directory
+**Questions:** Read HANDOVER.md and LESSONS-LEARNED.md first
 
 ---
 
-## Version History
-
-| Version | Date | Major Changes |
-|---------|------|---------------|
-| **2.0.0** | Dec 28, 2025 | SQLite migration, REST API, 98% cost reduction |
-| **1.x** | Dec 23, 2025 | S3-based system, scheduler fixes, contact editing |
-| **1.0** | Dec 22, 2025 | Initial implementation |
-
----
-
-**Last Updated:** December 28, 2025
-**Status:** ✅ Production - v2.0.0 (SQLite + REST API)
+**Remember:** The best code is simple code that works.
