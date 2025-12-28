@@ -1,5 +1,137 @@
 # S3 Storage Setup Guide
 
+This guide covers setting up S3-compatible storage for WhatsApp VPSLink.
+
+## Storage Options
+
+**For Testing/Pre-production:** We're currently using **Garage S3** (self-hosted on ChromeBox server at 192.168.1.18)
+- Dedicated bucket: `whatsapp-vpslink`
+- No storage limits
+- Free (self-hosted)
+- LAN-only access (perfect for testing)
+
+**For Production:** **Backblaze B2** (cloud-hosted S3-compatible storage)
+- Scalable cloud storage
+- Accessible from anywhere
+- Low cost (~$0.10/month for typical usage)
+
+---
+
+## Option 1: Garage S3 (Self-Hosted) - Testing/Pre-production
+
+**Current Setup:** This is what we're using for testing and development.
+
+### Prerequisites
+
+- Access to ChromeBox server (saadiserver) at `192.168.1.18`
+- Garage S3 service running (see ChromeBox-Server/GARAGE-S3-STORAGE.md)
+
+### Bucket Information
+
+A dedicated bucket has been created for this application:
+
+- **Bucket Name:** `whatsapp-vpslink`
+- **Bucket ID:** `858fd80cb5258d851e818c96a1f15ec6d049b018fc7c524ba866669bbff4c943`
+- **Storage Limit:** None (unlimited)
+- **Current Size:** 0 B
+- **Objects:** 0
+- **Permissions:** Read/Write via `admin-key`
+
+### Configuration
+
+#### Step 1: Configure .env File
+
+Copy the example:
+```bash
+cp .env.example .env
+```
+
+#### Step 2: Edit .env for Garage
+
+```bash
+nano .env
+```
+
+Fill in the Garage S3 credentials:
+
+```env
+# Garage S3 Storage (Self-hosted on ChromeBox server)
+B2_BUCKET=whatsapp-vpslink
+B2_S3_ENDPOINT=http://192.168.1.18:3900
+B2_ACCESS_KEY_ID=GKd211b1cb6eb2935da1bbd565
+B2_SECRET_ACCESS_KEY=975ed880ab48527fea4c3bcc71c951660c4efaea14088946d0524e112cca094c
+B2_PREFIX=whatsapp/
+
+# Storage Mode: 's3' or 'local'
+STORAGE_MODE=s3
+```
+
+**Explanation:**
+- `B2_BUCKET`: The dedicated bucket name for this app
+- `B2_S3_ENDPOINT`: Garage S3 API endpoint on ChromeBox server
+- `B2_ACCESS_KEY_ID`: Garage admin key ID
+- `B2_SECRET_ACCESS_KEY`: Garage admin secret key
+- `B2_PREFIX`: Folder path inside bucket (optional)
+- `STORAGE_MODE`: Set to `s3` for S3 storage, `local` for local testing
+
+#### Step 3: Test Connection
+
+```bash
+node wa.js listen
+```
+
+You should see:
+```
+Connecting to WhatsApp...
+✓ Connected to WhatsApp!
+✓ Saved chats.json to S3
+```
+
+Press Ctrl+C to stop.
+
+#### Step 4: Verify Upload
+
+On the ChromeBox server:
+```bash
+ssh root@192.168.1.18
+s3cmd ls s3://whatsapp-vpslink/
+```
+
+You should see: `whatsapp/chats.json`
+
+### Garage S3 Benefits for Testing
+
+✅ **Advantages:**
+- **Free:** No cloud storage costs
+- **Fast:** LAN speeds (~100 MB/s vs cloud ~10 MB/s)
+- **Private:** Data never leaves your network
+- **Unlimited:** No storage quotas or limits
+- **Low latency:** ~1ms vs cloud ~50-100ms
+- **No egress fees:** Download data as much as you want
+
+⚠️ **Limitations:**
+- **LAN only:** Must be on same network (or use Tailscale VPN)
+- **No redundancy:** Single server (no replication configured)
+- **Requires ChromeBox server:** Must keep server running
+
+### Monitoring Garage S3 Usage
+
+Check bucket status:
+```bash
+ssh root@192.168.1.18 'garage -c /etc/garage/garage.toml bucket info whatsapp-vpslink'
+```
+
+View files in bucket:
+```bash
+ssh root@192.168.1.18 's3cmd ls s3://whatsapp-vpslink/whatsapp/'
+```
+
+---
+
+## Option 2: Backblaze B2 (Cloud) - Production
+
+**Note:** We're keeping this option available for future production deployment.
+
 This guide covers setting up Backblaze B2 (S3-compatible storage) for WhatsApp VPSLink.
 
 ## Why S3 Storage?
@@ -303,6 +435,19 @@ Examples:
 
 ## Alternative S3 Providers
 
+### Garage (Self-Hosted) - **RECOMMENDED for Testing**
+
+```env
+B2_S3_ENDPOINT=http://192.168.1.18:3900
+B2_ACCESS_KEY_ID=GKd211b1cb6eb2935da1bbd565
+B2_SECRET_ACCESS_KEY=975ed880ab48527fea4c3bcc71c951660c4efaea14088946d0524e112cca094c
+B2_BUCKET=whatsapp-vpslink
+```
+
+**Cost:** Free (self-hosted)
+**Speed:** LAN speeds (~100 MB/s)
+**Limitations:** LAN-only access (use Tailscale for remote access)
+
 ### AWS S3
 
 ```env
@@ -333,7 +478,9 @@ B2_SECRET_ACCESS_KEY=your-r2-secret
 
 **Cost:** $0.015/GB/month, but 0 egress fees
 
-**Recommendation:** Stick with Backblaze B2 - it's the cheapest and most straightforward.
+**Recommendations:**
+- **For Testing/Development:** Use Garage (self-hosted, free, fast)
+- **For Production:** Use Backblaze B2 (cheapest cloud option, reliable)
 
 ## Security Best Practices
 
