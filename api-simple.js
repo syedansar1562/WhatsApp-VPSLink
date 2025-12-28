@@ -278,6 +278,99 @@ app.get('/api/stats', (req, res) => {
 // ============================================================================
 
 // 404 handler
+app.get('/api/jobs', (req, res) => {
+  try {
+    const jobs = db.prepare(`
+      SELECT id, job_data, status, scheduled_at, created_at, updated_at
+      FROM scheduled_jobs
+      ORDER BY created_at DESC
+    `).all();
+
+    const parsedJobs = jobs.map(job => {
+      const jobData = JSON.parse(job.job_data);
+      return {
+        ...jobData,
+        id: job.id,
+        status: job.status,
+        scheduledStartAt: job.scheduled_at,
+        createdAt: job.created_at,
+        updatedAt: job.updated_at
+      };
+    });
+
+    res.json(parsedJobs);
+  } catch (error) {
+    console.error('Error fetching jobs:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /api/jobs - Create new job
+app.post('/api/jobs', (req, res) => {
+  try {
+    const { recipients, messageParts, scheduledStartAt, config } = req.body;
+
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one recipient is required' });
+    }
+
+    if (!messageParts || !Array.isArray(messageParts) || messageParts.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one message part is required' });
+    }
+
+    if (!scheduledStartAt) {
+      return res.status(400).json({ success: false, error: 'scheduledStartAt is required' });
+    }
+
+    const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+    const now = new Date().toISOString();
+
+    const jobData = {
+      recipients,
+      messageParts,
+      config: config || { intervalMode: 'automatic', recipientGapSeconds: 30, maxRetries: 3 },
+      createdBy: 'web',
+      progress: { currentRecipientIndex: 0, currentPartIndex: 0, recipientsSent: 0, recipientsFailed: 0, sentCount: 0, failedCount: 0, totalCount: recipients.length * messageParts.length }
+    };
+
+    db.prepare(`
+      INSERT INTO scheduled_jobs (id, job_data, status, scheduled_at, created_at, updated_at)
+      VALUES (?, ?, 'pending', ?, ?, ?)
+    `).run(jobId, JSON.stringify(jobData), scheduledStartAt, now, now);
+
+    res.status(201).json({
+      success: true,
+      message: 'Job created successfully',
+      data: { id: jobId, ...jobData, status: 'pending', scheduledStartAt, createdAt: now, updatedAt: now }
+    });
+  } catch (error) {
+    console.error('Error creating job:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/jobs/:id - Delete/cancel job
+app.delete('/api/jobs/:id', (req, res) => {
+  try {
+    const result = db.prepare(`
+      UPDATE scheduled_jobs
+      SET status = 'cancelled', updated_at = ?
+      WHERE id = ? AND status = 'pending'
+    `).run(new Date().toISOString(), req.params.id);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, error: 'Job not found or already completed' });
+    }
+
+    res.json({ success: true, message: 'Job cancelled successfully' });
+  } catch (error) {
+    console.error('Error deleting job:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log('API server running on port ' + PORT);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -298,20 +391,75 @@ app.use((err, req, res, next) => {
 // START SERVER
 // ============================================================================
 
-app.listen(PORT, () => {
-  console.log('');
-  console.log('🚀 WhatsApp Scheduler API');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`✓ Server running on port ${PORT}`);
-  console.log(`✓ Database: ${dbPath}`);
-  console.log('');
-  console.log('Available endpoints:');
-  console.log('  GET    /health');
-  console.log('  GET    /api/stats');
-  console.log('  GET    /api/messages');
-  console.log('  POST   /api/messages');
-  console.log('  GET    /api/messages/:id');
-  console.log('  DELETE /api/messages/:id');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('');
+  console.log('API server running on port ' + PORT);
 });
+
+// ==================== CONTACTS ENDPOINTS ====================
+
+// GET /api/contacts - List all contacts
+app.get('/api/contacts', (req, res) => {
+  try {
+    const contacts = db.prepare(`
+      SELECT id, phone, name, aliases, tags, is_favorite, created_at, updated_at
+      FROM contacts
+      ORDER BY name ASC
+    `).all();
+
+    //Convert to Web UI format (key-value with phone as key)
+    const contactsObj = {};
+    contacts.forEach(contact => {
+      const phone = contact.phone;
+      contactsObj[phone] = {
+        name: contact.name,
+        aliases: JSON.parse(contact.aliases || '[]'),
+        phones: {
+          primary: contact.phone,
+          secondary: null
+        },
+        defaultPhone: 'primary',
+        favorite: contact.is_favorite === 1,
+        tags: JSON.parse(contact.tags || '[]'),
+        timezone: null
+      };
+    });
+
+    res.json(contactsObj);
+  } catch (error) {
+    console.error('Error fetching contacts:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /api/contacts - Save all contacts (replaces existing)
+app.post('/api/contacts', (req, res) => {
+  try {
+    const contacts = req.body;
+    
+    // Delete all existing contacts
+    db.prepare('DELETE FROM contacts').run();
+    
+    // Insert new contacts
+    const insert = db.prepare(`
+      INSERT INTO contacts (phone, name, aliases, tags, is_favorite)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    
+    Object.entries(contacts).forEach(([phone, contact]) => {
+      insert.run(
+        contact.phones.primary,
+        contact.name,
+        JSON.stringify(contact.aliases || []),
+        JSON.stringify(contact.tags || []),
+        contact.favorite ? 1 : 0
+      );
+    });
+    
+    res.json({ success: true, message: 'Contacts saved successfully' });
+  } catch (error) {
+    console.error('Error saving contacts:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+
+// Start server
