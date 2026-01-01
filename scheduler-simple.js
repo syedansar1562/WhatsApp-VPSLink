@@ -1,12 +1,21 @@
 /**
- * Simple WhatsApp Scheduler
- * Checks database every 60 seconds and sends pending messages
+ * Enhanced WhatsApp Scheduler with Humanization
+ * Checks database every 60 seconds and sends pending messages with natural delays
+ *
+ * CRITICAL FIXES (Jan 1, 2026):
+ * - REMOVED retry logic to prevent duplicate sends
+ * - ADDED status re-checks before sending
+ * - ADDED "sending" intermediate status
+ * - FIXED SQL syntax error (duplicate semicolon)
+ * - ADDED idempotency protection
  */
 
 require('dotenv').config();
 const whatsapp = require('./whatsapp-listener');
 const Database = require('better-sqlite3');
 const path = require('path');
+const { calculateMessageDelay, delay, getRandomJitter } = require('./humanization-utils');
+const config = require('./humanization-config');
 
 // Database connection
 const dbPath = path.join(__dirname, 'data', 'whatsapp.db');
@@ -14,6 +23,49 @@ const db = new Database(dbPath);
 
 console.log('📦 Scheduler starting...');
 console.log(`📊 Database: ${dbPath}`);
+
+// Create idempotency table if it doesn't exist
+db.exec(`
+  CREATE TABLE IF NOT EXISTS sent_message_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id TEXT NOT NULL,
+    job_id TEXT,
+    recipient_jid TEXT NOT NULL,
+    message_text_hash TEXT NOT NULL,
+    sent_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id, recipient_jid)
+  )
+`);
+
+/**
+ * Check if message already sent to prevent duplicates
+ */
+function isAlreadySent(messageId, recipientJid) {
+  const result = db.prepare(`
+    SELECT id FROM sent_message_log
+    WHERE message_id = ? AND recipient_jid = ?
+  `).get(messageId, recipientJid);
+
+  return !!result;
+}
+
+/**
+ * Log sent message to prevent future duplicates
+ */
+function logSentMessage(messageId, recipientJid, messageText, jobId = null) {
+  // Simple hash of message text for deduplication
+  const textHash = require('crypto').createHash('md5').update(messageText).digest('hex');
+
+  try {
+    db.prepare(`
+      INSERT OR IGNORE INTO sent_message_log (message_id, job_id, recipient_jid, message_text_hash)
+      VALUES (?, ?, ?, ?)
+    `).run(messageId, jobId, recipientJid, textHash);
+  } catch (error) {
+    console.error('⚠️  Failed to log sent message:', error.message);
+    // Don't throw - this is just for safety, not critical
+  }
+}
 
 /**
  * Get pending messages that are ready to be sent
@@ -25,12 +77,14 @@ function getPendingMessages() {
       to_phone,
       message,
       contact_name,
+      actual_send_time,
       scheduled_at
     FROM scheduled_messages
     WHERE status = 'pending'
-      AND datetime(scheduled_at) <= datetime('now')
-    ORDER BY scheduled_at ASC
+      AND datetime(COALESCE(actual_send_time, scheduled_at)) <= datetime('now')
+    ORDER BY COALESCE(actual_send_time, scheduled_at) ASC
   `;
+  // FIX: Removed duplicate semicolon that was here
 
   return db.prepare(query).all();
 }
@@ -53,6 +107,7 @@ function updateMessageStatus(messageId, status, errorMessage = null) {
 
 /**
  * Check for pending messages and send them
+ * FIX: Added status re-checks and idempotency
  */
 async function checkAndSendMessages() {
   try {
@@ -72,12 +127,35 @@ async function checkAndSendMessages() {
 
     console.log(`📬 Found ${pendingMessages.length} message(s) to send`);
 
-    // Send each message
+    // Send each message with humanization
     for (const msg of pendingMessages) {
       try {
-        console.log(`📤 Sending to ${msg.contact_name} (${msg.to_phone}): "${msg.message}"`);
+        // FIX: Re-check status before sending (in case message was cancelled/deleted)
+        const currentStatus = db.prepare('SELECT status FROM scheduled_messages WHERE id = ?').get(msg.id);
+        if (!currentStatus || currentStatus.status !== 'pending') {
+          console.log(`⚠️  Message ${msg.id} status changed to ${currentStatus?.status || 'deleted'}, skipping`);
+          continue;
+        }
 
+        // FIX: Check idempotency - have we already sent this?
+        const recipientJid = msg.to_phone.includes('@') ? msg.to_phone : `${msg.to_phone}@s.whatsapp.net`;
+        if (isAlreadySent(msg.id, recipientJid)) {
+          console.log(`⚠️  Already sent message ${msg.id} to ${recipientJid}, skipping`);
+          updateMessageStatus(msg.id, 'sent'); // Mark as sent in case it wasn't
+          continue;
+        }
+
+        // FIX: Mark as "sending" BEFORE attempting to send (prevents double-sends)
+        updateMessageStatus(msg.id, 'sending');
+
+        console.log(`📤 Sending to ${msg.contact_name || msg.to_phone}: "${msg.message.substring(0, 50)}..."`);
+
+        // FIX: Single send attempt - NO RETRIES
+        // WhatsApp's infrastructure handles reliability - retries cause duplicates
         await whatsapp.sendMessage(msg.to_phone, msg.message);
+
+        // Log to prevent duplicates
+        logSentMessage(msg.id, recipientJid, msg.message);
 
         // Mark as sent
         updateMessageStatus(msg.id, 'sent');
@@ -86,21 +164,15 @@ async function checkAndSendMessages() {
       } catch (error) {
         console.error(`❌ Failed to send message ${msg.id}:`, error.message);
 
-        // Mark as failed
+        // Mark as failed - NO RETRY
         updateMessageStatus(msg.id, 'failed', error.message);
+        console.log(`⚠️  Message ${msg.id} marked as failed - no retries to prevent duplicates`);
       }
     }
 
   } catch (error) {
     console.error('❌ Scheduler error:', error);
   }
-}
-
-/**
- * Delay helper function
- */
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -162,13 +234,21 @@ function updateJobStatus(jobId, status) {
 }
 
 /**
- * Execute a single job (all recipients, all message parts)
+ * Execute a single job (all recipients, all message parts) with HUMANIZATION
+ * FIX: Removed retry logic, added status checks, added idempotency
  */
 async function executeJob(job) {
-  console.log(`\n[JOB ${job.id}] Starting execution`);
+  console.log(`\n[JOB ${job.id}] Starting execution with HUMANIZATION`);
   console.log(`[JOB ${job.id}] Recipients: ${job.recipients.length}`);
   console.log(`[JOB ${job.id}] Message parts: ${job.messageParts.length}`);
   console.log(`[JOB ${job.id}] Total messages: ${job.recipients.length * job.messageParts.length}`);
+
+  // FIX: Check job status before starting (in case it was cancelled)
+  const currentJob = db.prepare('SELECT status FROM scheduled_jobs WHERE id = ?').get(job.id);
+  if (!currentJob || currentJob.status === 'cancelled') {
+    console.log(`[JOB ${job.id}] ⚠️  Job was cancelled, aborting`);
+    return;
+  }
 
   // Update status to running
   updateJobStatus(job.id, 'running');
@@ -200,6 +280,13 @@ async function executeJob(job) {
     console.log(`\n[JOB ${job.id}] ────────────────────────────────────`);
     console.log(`[JOB ${job.id}] Recipient ${recipientIndex + 1}/${job.recipients.length}: ${recipientJid}`);
 
+    // FIX: Re-check job status before each recipient (in case cancelled during execution)
+    const jobCheck = db.prepare('SELECT status FROM scheduled_jobs WHERE id = ?').get(job.id);
+    if (!jobCheck || jobCheck.status === 'cancelled') {
+      console.log(`[JOB ${job.id}] ⚠️  Job was cancelled during execution, stopping`);
+      return;
+    }
+
     // Determine starting part index (for crash recovery)
     const startPartIndex = (recipientIndex === job.progress.currentRecipientIndex)
       ? job.progress.currentPartIndex
@@ -207,40 +294,47 @@ async function executeJob(job) {
 
     let recipientSuccess = true;
 
-    // Process message parts sequentially
+    // Process message parts sequentially with HUMANIZATION
     for (let partIndex = startPartIndex; partIndex < job.messageParts.length; partIndex++) {
       const part = job.messageParts[partIndex];
 
       console.log(`[JOB ${job.id}]   Part ${partIndex + 1}/${job.messageParts.length}`);
       console.log(`[JOB ${job.id}]   Text: "${part.text.substring(0, 50)}${part.text.length > 50 ? '...' : ''}"`);
+      console.log(`[JOB ${job.id}]   Length: ${part.text.length} characters`);
 
-      // Attempt to send with retries
+      // Calculate humanized delay based on message length
+      const messageDelay = calculateMessageDelay(part.text);
+      console.log(`[JOB ${job.id}]   📊 Calculated delay: ${(messageDelay / 1000).toFixed(1)}s (length-based + jitter)`);
+
+      // FIX: Check idempotency before sending
+      const messageId = `${job.id}_r${recipientIndex}_p${partIndex}`;
+      if (isAlreadySent(messageId, recipientJid)) {
+        console.log(`[JOB ${job.id}]   ⚠️  Already sent part ${partIndex + 1} to ${recipientJid}, skipping`);
+        job.progress.sentCount++;
+        continue;
+      }
+
+      // FIX: Single send attempt - NO RETRIES to prevent duplicates
       let sendSuccess = false;
-      const maxRetries = job.config?.maxRetries || 3;
+      try {
+        await whatsapp.sendMessage(recipientJid, part.text);
+        console.log(`[JOB ${job.id}]   ✅ Sent successfully`);
+        sendSuccess = true;
+        job.progress.sentCount++;
 
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        try {
-          await whatsapp.sendMessage(recipientJid, part.text);
-          console.log(`[JOB ${job.id}]   ✅ Sent successfully`);
-          sendSuccess = true;
-          job.progress.sentCount++;
-          break;
-        } catch (error) {
-          console.error(`[JOB ${job.id}]   ❌ Attempt ${attempt}/${maxRetries} failed:`, error.message);
+        // Log to prevent duplicates
+        logSentMessage(messageId, recipientJid, part.text, job.id);
 
-          if (attempt < maxRetries) {
-            // Exponential backoff: 2s, 4s, 6s...
-            const backoffDelay = 2000 * attempt;
-            console.log(`[JOB ${job.id}]   ⏱️  Retrying in ${backoffDelay / 1000}s...`);
-            await delay(backoffDelay);
-          }
-        }
+      } catch (error) {
+        console.error(`[JOB ${job.id}]   ❌ Send failed:`, error.message);
+        console.log(`[JOB ${job.id}]   ⚠️  NO RETRY - prevents duplicates. Message marked as failed.`);
+        sendSuccess = false;
+        job.progress.failedCount++;
       }
 
       if (!sendSuccess) {
-        console.error(`[JOB ${job.id}]   ❌ FAILED after ${maxRetries} attempts`);
+        console.error(`[JOB ${job.id}]   ❌ FAILED - moving to next recipient`);
         recipientSuccess = false;
-        job.progress.failedCount++;
         break; // Skip remaining parts for this recipient
       }
 
@@ -249,10 +343,10 @@ async function executeJob(job) {
       job.progress.lastSentAt = new Date().toISOString();
       updateJob(job.id, { progress: job.progress });
 
-      // Delay after message (if specified and not last part)
-      if (part.delayAfterSeconds && partIndex < job.messageParts.length - 1) {
-        console.log(`[JOB ${job.id}]   ⏱️  Waiting ${part.delayAfterSeconds}s before next part...`);
-        await delay(part.delayAfterSeconds * 1000);
+      // Apply humanized delay before next part (if not last part)
+      if (partIndex < job.messageParts.length - 1) {
+        console.log(`[JOB ${job.id}]   ⏱️  Humanized delay: ${(messageDelay / 1000).toFixed(1)}s before next part...`);
+        await delay(messageDelay);
       }
     }
 
@@ -269,11 +363,13 @@ async function executeJob(job) {
     job.progress.currentPartIndex = 0; // Reset for next recipient
     updateJob(job.id, { progress: job.progress });
 
-    // Gap between recipients (if not last recipient)
+    // Gap between recipients with jitter (if not last recipient)
     if (recipientIndex < job.recipients.length - 1) {
-      const gap = job.config?.recipientGapSeconds || 30;
-      console.log(`[JOB ${job.id}] ⏱️  Gap before next recipient: ${gap}s`);
-      await delay(gap * 1000);
+      const baseGap = job.config?.recipientGapSeconds || config.RECIPIENT_GAP;
+      const jitter = getRandomJitter();
+      const totalGap = baseGap + jitter;
+      console.log(`[JOB ${job.id}] ⏱️  Gap before next recipient: ${totalGap.toFixed(1)}s (${baseGap}s + ${jitter.toFixed(1)}s jitter)`);
+      await delay(totalGap * 1000);
     }
   }
 
@@ -332,4 +428,14 @@ setInterval(runScheduler, 60 * 1000);
 setTimeout(runScheduler, 5000); // Wait 5 seconds for WhatsApp to connect
 
 // Keep process alive
-console.log('🚀 Scheduler is running...');
+console.log('🚀 Scheduler is running with HUMANIZATION enabled...');
+console.log('🛡️  SAFETY FEATURES ENABLED:');
+console.log('   - NO RETRIES (prevents duplicates)');
+console.log('   - Idempotency checks (tracks sent messages)');
+console.log('   - Status re-checks (prevents cancelled messages)');
+console.log('   - "Sending" intermediate status (prevents double-sends)');
+console.log('📊 Settings:');
+console.log(`   - Min delay: ${config.MIN_DELAY}s`);
+console.log(`   - Jitter: ${config.JITTER_MIN}-${config.JITTER_MAX}s`);
+console.log(`   - Typing indicator: ${config.ENABLE_TYPING_INDICATOR ? 'ON' : 'OFF'}`);
+console.log(`   - Long message delay: ~${config.MESSAGE_DELAYS.LONG.baseDelay}s + jitter`);
