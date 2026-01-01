@@ -2,8 +2,28 @@
 
 A minimal, reliable WhatsApp message scheduling system that runs 24/7 on a VPS.
 
-**Status:** ✅ Production (Deployed December 28, 2025)
+**Status:** ⚠️ CRITICAL FIX PENDING (Jan 1, 2026)
 **Philosophy:** Simple, working code > Complex, broken code
+
+---
+
+## 🚨 **CRITICAL: NEW YEAR'S INCIDENT - READ FIRST**
+
+**A critical incident occurred on Jan 1, 2026** - messages were sent 4-7 times to recipients causing serious embarrassment.
+
+**Root Cause:** Retry logic sent duplicates when network confirmations were slow.
+**Status:** Fixes implemented, tested, and pushed to GitHub - **NOT YET DEPLOYED**
+
+📖 **Must Read Before Deploying:**
+- [docs/incidents/PROBLEM_EXPLANATION.md](docs/incidents/PROBLEM_EXPLANATION.md) - Simple explanation
+- [docs/incidents/NEW_YEAR_INCIDENT.md](docs/incidents/NEW_YEAR_INCIDENT.md) - Full technical report
+- [docs/incidents/FIXES_APPLIED.md](docs/incidents/FIXES_APPLIED.md) - What was fixed
+
+**Fixed Code:**
+- `scheduler-simple.js` - Retry logic removed, idempotency added
+- `frontend/app/scheduled/page.tsx` - Status filter fixed
+
+**Deploy:** See [Deployment](#deployment-of-fixes) section below.
 
 ---
 
@@ -372,12 +392,56 @@ pm2 restart whatsapp-api
 
 ---
 
+## Deployment of Fixes
+
+### Backend (Scheduler)
+```bash
+# 1. Backup current scheduler
+ssh root@5.231.56.146 "cd /root/whatsapp-vpslink && cp scheduler-simple.js scheduler-simple.js.backup-$(date +%Y%m%d)"
+
+# 2. Deploy fixed scheduler
+scp scheduler-simple.js root@5.231.56.146:/root/whatsapp-vpslink/
+
+# 3. Restart PM2
+ssh root@5.231.56.146 "cd /root/whatsapp-vpslink && pm2 restart scheduler && pm2 logs scheduler --lines 50"
+
+# 4. Verify idempotency table created
+ssh root@5.231.56.146 "cd /root/whatsapp-vpslink && sqlite3 data/whatsapp.db \"SELECT name FROM sqlite_master WHERE type='table' AND name='sent_message_log';\""
+```
+
+### Frontend (UI)
+```bash
+# 1. Deploy fixed UI
+scp frontend/app/scheduled/page.tsx root@192.209.62.48:/var/www/whatsapp-vpslink/app/scheduled/
+
+# 2. Rebuild and restart
+ssh root@192.209.62.48 "cd /var/www/whatsapp-vpslink && npm run build && pm2 restart whatsapp-frontend"
+```
+
+### Testing After Deployment
+```bash
+# 1. Schedule 5-10 test messages
+# 2. Verify no duplicates sent
+# 3. Delete a message mid-flight, verify it doesn't send
+# 4. Check sent_message_log table is populated
+# 5. Monitor PM2 logs for 24 hours
+```
+
+---
+
 ## Documentation
 
-- [HANDOVER.md](./HANDOVER.md) - Complete system documentation and handover
+### Essential Docs
+- **[docs/README.md](docs/README.md)** - Complete documentation index
+- **[docs/incidents/](docs/incidents/)** - Critical incidents and fixes
+- **[docs/handovers/HANDOVER-CURRENT.md](docs/handovers/HANDOVER-CURRENT.md)** - System handover
+
+### Reference
 - [LESSONS-LEARNED.md](./LESSONS-LEARNED.md) - What went wrong and why
 - [docs/API.md](./docs/API.md) - API reference
 - [docs/DEPLOYMENT-CHECKLIST.md](./docs/DEPLOYMENT-CHECKLIST.md) - Deployment guide
+- [docs/architecture/SCHEDULER.md](docs/architecture/SCHEDULER.md) - Scheduler architecture
+- [docs/troubleshooting/](docs/troubleshooting/) - Troubleshooting guides
 
 ---
 
